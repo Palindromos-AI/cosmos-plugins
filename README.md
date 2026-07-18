@@ -4,10 +4,10 @@ Private Codex plugin marketplace for reusable Cosmos workflows.
 
 ## Install
 
-You need GitHub access to `Palindromos-AI/cosmos-plugins` before installing this private marketplace.
+You need GitHub access to `Palindromos-AI/cosmos-plugins` and an SSH key authorized for that account before installing this private marketplace.
 
 ```bash
-codex plugin marketplace add Palindromos-AI/cosmos-plugins --ref main
+codex plugin marketplace add git@github.com:Palindromos-AI/cosmos-plugins.git --ref main
 codex plugin add cosmos-knowledge-tools@cosmos-plugins
 ```
 
