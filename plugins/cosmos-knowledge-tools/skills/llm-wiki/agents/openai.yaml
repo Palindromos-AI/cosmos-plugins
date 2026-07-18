@@ -1,0 +1,4 @@
+interface:
+  display_name: "LLM Wiki"
+  short_description: "Build and maintain a structured Obsidian LLM Wiki"
+  default_prompt: "Use $llm-wiki to ingest selected notes into a structured, source-grounded Obsidian wiki."
