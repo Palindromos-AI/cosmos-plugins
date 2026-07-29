@@ -1,0 +1,22 @@
+{
+  "name": "cosmos-sources-tools",
+  "version": "0.1.0",
+  "description": "Fetch, semantically filter, and locally render the complete current-day CLS telegraph feed.",
+  "author": {
+    "name": "Jason"
+  },
+  "homepage": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "repository": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cosmos Sources Tools",
+    "shortDescription": "Fetch and filter today's CLS telegraph feed.",
+    "longDescription": "Retrieves the complete China Standard Time CLS telegraph feed for the current day, lets Codex apply a broad semantic filter, and writes selected source text unchanged to local Markdown with timestamps and links.",
+    "developerName": "Jason",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Fetch and filter today's AI-related CLS telegraph feed."
+    ]
+  }
+}

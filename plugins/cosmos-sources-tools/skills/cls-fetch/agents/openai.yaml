@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLS Fetch"
+  short_description: "读取、语义筛选并汇总当天财联社电报，保留完整原文和来源链接"
+  default_prompt: "使用 $cls-fetch 获取并筛选今天与 AI 相关的财联社电报，保留原文并输出到当前项目。"
