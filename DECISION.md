@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-08-10 — Package a self-contained SuperMind stock-data plugin
+
+- **Clarification:** Add `stockdata-fetch` in a standalone `cosmos-stockdata-tools` plugin, separate from knowledge-management and source-archival plugins.
+- **Context:** Daily A-share and index extraction is an independent operational workflow that must be distributable to users who do not have Jason's local `panda` project, environment, paths, or SuperMind account ID.
+
+- **Decision:** Make the plugin's packaged notebook and scripts the sole maintained execution source. Bundle the stable SuperMind extraction path, dynamically discover each token's account ID, keep credentials and output external, and defer akshare/baostock until a confirmed SuperMind coverage gap creates a concrete requirement.
+- **Context:** A self-contained plugin is portable and testable. Historical dates are injected only into an in-memory notebook copy, while the bundled file remains `TARGET_DATE = None`; both normal and failed submissions restore the cloud copy to that default.
+
 ## 2026-08-10 — ZSXQ dates always use Beijing time
 
 - **Clarification:** Package `zsxq-fetch` with a fixed `Asia/Shanghai` (`UTC+08:00`) day boundary for explicit dates and “today”; never derive the collection day from the host, browser, user-location, or publisher timezone.

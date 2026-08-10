@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stockdata Fetch"
+  short_description: "通过 SuperMind 主源获取并验证最新 A 股日频数据"
+  default_prompt: "使用 $stockdata-fetch 获取并验证最新已收盘交易日的 A 股数据。"
