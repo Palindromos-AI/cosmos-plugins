@@ -7,6 +7,10 @@ import {
   planImageTiles,
   TILE_SCHEMA_VERSION,
 } from "./zsxq-image-tiles.mjs";
+import {
+  beijingDateFromTimestamp,
+  ZSXQ_TIME_ZONE,
+} from "./zsxq-time.mjs";
 
 export const SCHEMA_VERSION = 1;
 export const GENERATOR = "zsxq-fetch";
@@ -1221,8 +1225,11 @@ export async function normalizeTopic(manifestValue, inputValue) {
     minimum: 1,
   });
   const timestamp = isoTimestamp(input.timestamp, "topic.timestamp");
-  if (timestamp.slice(0, 10) !== manifest.date) {
-    fail("topic.timestamp", `must fall on the run's platform date ${manifest.date}`);
+  if (beijingDateFromTimestamp(timestamp) !== manifest.date) {
+    fail(
+      "topic.timestamp",
+      `must fall on the run's platform date ${manifest.date} in ${ZSXQ_TIME_ZONE} (Beijing time)`,
+    );
   }
   const previousTopic = manifest.topics.at(-1);
   if (previousTopic && Date.parse(timestamp) > Date.parse(previousTopic.timestamp)) {
@@ -1828,8 +1835,11 @@ function assertUnique(values, path) {
 
 function assertTopicChronology(topics, date, path) {
   for (const [index, topic] of topics.entries()) {
-    if (topic.timestamp.slice(0, 10) !== date) {
-      fail(`${path}[${index}].timestamp`, `must fall on platform date ${date}`);
+    if (beijingDateFromTimestamp(topic.timestamp) !== date) {
+      fail(
+        `${path}[${index}].timestamp`,
+        `must fall on platform date ${date} in ${ZSXQ_TIME_ZONE} (Beijing time)`,
+      );
     }
     if (
       index > 0 &&
