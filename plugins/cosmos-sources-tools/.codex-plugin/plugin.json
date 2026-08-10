@@ -1,7 +1,7 @@
 {
   "name": "cosmos-sources-tools",
-  "version": "0.1.0",
-  "description": "Fetch, semantically filter, and locally render the complete current-day CLS telegraph feed.",
+  "version": "0.2.0",
+  "description": "Fetch, verify, and locally archive daily source content from CLS and Knowledge Planet.",
   "author": {
     "name": "Jason"
   },
@@ -10,13 +10,14 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Cosmos Sources Tools",
-    "shortDescription": "Fetch and filter today's CLS telegraph feed.",
-    "longDescription": "Retrieves the complete China Standard Time CLS telegraph feed for the current day, lets Codex apply a broad semantic filter, and writes selected source text unchanged to local Markdown with timestamps and links.",
+    "shortDescription": "Archive daily CLS and Knowledge Planet content.",
+    "longDescription": "Retrieves and semantically filters the complete China Standard Time CLS telegraph feed, or uses the user's signed-in Chrome session to verify and archive every topic and attachment from one Knowledge Planet calendar day. Both skills write source-grounded local Markdown without introducing external model credentials.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Fetch and filter today's AI-related CLS telegraph feed."
+      "Fetch and filter today's AI-related CLS telegraph feed.",
+      "Archive every topic and attachment from a Knowledge Planet for one platform date."
     ]
   }
 }
