@@ -6,6 +6,10 @@ import {
   extractZsxqTopicBodies,
   waitForZsxqDetailReadyOnTab,
 } from "./zsxq-dom-extractor.mjs";
+import {
+  beijingDateFromTimestamp,
+  ZSXQ_UTC_OFFSET,
+} from "./zsxq-time.mjs";
 
 export const ZSXQ_BROWSER_CONTRACT_V1 = Object.freeze({
   version: "zsxq-web-angular-v1",
@@ -1317,7 +1321,7 @@ function parseDisplayedTimestamp(displayedTimestamp) {
       "Knowledge Planet displayed timestamp is invalid",
     );
   }
-  const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}+08:00`;
+  const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}${ZSXQ_UTC_OFFSET}`;
   const milliseconds = Date.parse(iso);
   if (!Number.isFinite(milliseconds)) {
     throw new ZsxqBrowserCollectionError(
@@ -1326,7 +1330,7 @@ function parseDisplayedTimestamp(displayedTimestamp) {
       "Knowledge Planet displayed timestamp is invalid",
     );
   }
-  return { iso, date: `${year}-${month}-${day}`, milliseconds };
+  return { iso, date: beijingDateFromTimestamp(iso), milliseconds };
 }
 
 function normalizeTimelineTopics(snapshot) {
