@@ -15,10 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-stockdata-tools` to `0.1.2` after strengthening runtime preflight, failure-state reporting, durable-output selection, and full-index quote validation.
+- Made distributed `stockdata-fetch` authentication explicitly per-user and defaulted its token file to the current user's `~/.config/supermind/token`, with `SUPERMIND_TOKEN_FILE` and `--token-file` overrides.
+- Defined the `stockdata-fetch` fallback-source policy: verify SuperMind coverage first, require user approval before adding a fallback, prefer baostock when it covers the requirement, and reserve akshare for gaps baostock cannot cover or explicit user direction.
 - Bumped `cosmos-sources-tools` to `0.2.1` for the fixed Beijing-date boundary contract.
 - Expanded `cosmos-sources-tools` metadata and documentation to cover both bundled source-retrieval skills, and bumped the plugin version to `0.2.0`.
 
 ### Fixed
 
+- Import and verify pinned `stockdata-fetch` dependencies before remote mutation, distinguish confirmed `aborted` runs from unresolved `cleanup_failed` kernel/notebook state, block duplicate runs until explicit recovery succeeds, preserve simultaneous restoration and deletion failures, reject accidental temporary destinations, and derive both the 20,000-row catalog floor and 4,000 quoted-index floor from the notebook while enforcing exact `has_quote` consistency.
 - Reject SuperMind workbooks whose absolute modification time is not strictly newer than both the pre-run baseline and run start, serialize same-account local submissions, validate downloads before atomically replacing local files, enforce owned-kernel cleanup on connection and remote-execution failures, and protect the installed plugin source from runtime writes.
 - Validate ZSXQ topic membership after strictly parsing explicit timestamp offsets and converting the represented instant to Beijing time instead of comparing the timestamp's textual date prefix.

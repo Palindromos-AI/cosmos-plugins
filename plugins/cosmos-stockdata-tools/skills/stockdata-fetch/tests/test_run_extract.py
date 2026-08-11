@@ -102,11 +102,129 @@ class RunExtractTests(unittest.TestCase):
             with self.assertRaises(driver.DriverError):
                 driver.token()
 
+    def test_parser_defaults_to_each_users_supermind_config_file(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            args = driver.build_parser().parse_args(["status"])
+        self.assertEqual(args.token_file, Path.home() / ".config" / "supermind" / "token")
+
+    def test_token_file_environment_overrides_user_config_default(self) -> None:
+        configured = Path(self.tempdir.name) / "custom-token"
+        with patch.dict(
+            os.environ,
+            {"SUPERMIND_TOKEN_FILE": str(configured)},
+            clear=True,
+        ):
+            args = driver.build_parser().parse_args(["status"])
+        self.assertEqual(args.token_file, configured)
+
+    def test_explicit_token_file_overrides_environment_path(self) -> None:
+        configured = Path(self.tempdir.name) / "configured-token"
+        explicit = Path(self.tempdir.name) / "explicit-token"
+        with patch.dict(
+            os.environ,
+            {"SUPERMIND_TOKEN_FILE": str(configured)},
+            clear=True,
+        ):
+            args = driver.build_parser().parse_args(
+                ["--token-file", str(explicit), "status"]
+            )
+        self.assertEqual(args.token_file, explicit)
+
     def test_user_name_is_discovered_and_cached(self) -> None:
         with patch.object(driver, "hub_user", return_value={"name": "alice"}) as lookup:
             self.assertEqual(driver.user_name(), "alice")
             self.assertEqual(driver.user_name(), "alice")
             lookup.assert_called_once()
+
+    def test_run_checks_local_dependencies_before_remote_mutation(self) -> None:
+        with (
+            patch.object(
+                driver,
+                "require_dependencies",
+                side_effect=driver.DriverError("missing websocket-client"),
+            ),
+            patch.object(driver, "load_notebook") as load,
+            patch.object(driver, "start_server") as start,
+            patch.object(driver, "push_notebook") as push,
+            patch.object(driver, "api") as api,
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "websocket-client"):
+                driver.run()
+        load.assert_not_called()
+        start.assert_not_called()
+        push.assert_not_called()
+        api.assert_not_called()
+        self.assertFalse(driver.state_path().exists())
+
+    def test_fetch_checks_local_dependencies_before_remote_access(self) -> None:
+        with (
+            patch.object(
+                driver,
+                "require_dependencies",
+                side_effect=driver.DriverError("missing openpyxl"),
+            ),
+            patch.object(driver, "start_server") as start,
+            patch.object(driver, "api") as api,
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "openpyxl"):
+                driver.fetch("2026-08-07", allow_existing=True)
+        start.assert_not_called()
+        api.assert_not_called()
+
+    def test_dependency_preflight_rejects_import_failure(self) -> None:
+        with patch.object(
+            driver.importlib,
+            "import_module",
+            side_effect=OSError("broken installation"),
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "import failed"):
+                driver.require_dependencies("websocket")
+
+    def test_dependency_preflight_rejects_wrong_distribution_version(self) -> None:
+        websocket = SimpleNamespace(
+            create_connection=object(),
+            WebSocketTimeoutException=TimeoutError,
+        )
+        with (
+            patch.object(driver.importlib, "import_module", return_value=websocket),
+            patch.object(driver.importlib.metadata, "version", return_value="0.0.0"),
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "expected 1.8.0"):
+                driver.require_dependencies("websocket")
+
+    def test_dependency_preflight_rejects_wrong_websocket_module(self) -> None:
+        with (
+            patch.object(driver.importlib, "import_module", return_value=SimpleNamespace()),
+            patch.object(driver.importlib.metadata, "version", return_value="1.8.0"),
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "missing API"):
+                driver.require_dependencies("websocket")
+
+    def test_watch_checks_dependencies_before_kernel_access(self) -> None:
+        with (
+            patch.object(
+                driver,
+                "require_dependencies",
+                side_effect=driver.DriverError("missing websocket-client"),
+            ),
+            patch.object(driver, "kernels") as kernels,
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "websocket-client"):
+                driver.watch(30)
+        kernels.assert_not_called()
+
+    def test_exec_checks_dependencies_before_server_access(self) -> None:
+        with (
+            patch.object(
+                driver,
+                "require_dependencies",
+                side_effect=driver.DriverError("missing websocket-client"),
+            ),
+            patch.object(driver, "start_server") as start,
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "websocket-client"):
+                driver.exec_code("1 + 1")
+        start.assert_not_called()
 
     def _run_with(self, fake_ws: FakeWebSocket):
         canonical = notebook("TARGET_DATE = None\nprint('one')\n")
@@ -177,8 +295,191 @@ class RunExtractTests(unittest.TestCase):
                 driver.run("2026-08-07")
         self.assertEqual(pushes[-1], canonical)
         self.assertEqual(len(deletes), 1)
+        state = json.loads(driver.state_path().read_text(encoding="utf-8"))
+        self.assertEqual(state["phase"], "aborted")
+        self.assertEqual(state["failed_phase"], "submitting")
+        self.assertIn("send failed", state["error"])
 
-    def test_failed_cloud_restore_aborts_submitted_kernel(self) -> None:
+    def test_failed_push_without_kernel_records_aborted_state(self) -> None:
+        canonical = notebook("TARGET_DATE = None\n")
+        with (
+            patch.object(driver, "load_notebook", return_value=canonical),
+            patch.object(driver, "start_server"),
+            patch.object(driver, "acquire_account_run_lock", return_value=object()),
+            patch.object(driver, "release_account_run_lock"),
+            patch.object(driver, "kernels", return_value=[]),
+            patch.object(driver, "cloud_workbooks", return_value=[]),
+            patch.object(driver, "push_notebook", side_effect=OSError("push failed")),
+            patch.object(driver, "delete_kernel") as delete,
+            patch.object(driver, "user_name", return_value="alice"),
+        ):
+            with self.assertRaisesRegex(OSError, "push failed"):
+                driver.run()
+        delete.assert_not_called()
+        state = json.loads(driver.state_path().read_text(encoding="utf-8"))
+        self.assertEqual(state["phase"], "aborted")
+        self.assertEqual(state["failed_phase"], "preparing")
+        self.assertIn("push failed", state["error"])
+
+    def test_kernel_delete_failure_records_cleanup_failed_and_possible_run(self) -> None:
+        canonical = notebook("TARGET_DATE = None\nprint('one')\n")
+        fake_ws = FakeWebSocket(fail_after=0)
+
+        def fake_api(method, path, data=None, **kwargs):
+            if method == "POST":
+                return {"id": "kernel-1"}
+            if method == "DELETE":
+                raise OSError("delete unavailable")
+            raise AssertionError((method, path, data, kwargs))
+
+        with (
+            patch.object(driver, "load_notebook", return_value=canonical),
+            patch.object(driver, "start_server"),
+            patch.object(driver, "acquire_account_run_lock", return_value=object()),
+            patch.object(driver, "release_account_run_lock"),
+            patch.object(driver, "kernels", return_value=[]),
+            patch.object(driver, "cloud_workbooks", return_value=[]),
+            patch.object(driver, "push_notebook"),
+            patch.object(driver, "api", side_effect=fake_api),
+            patch.object(driver, "_ws_connect", return_value=fake_ws),
+            patch.object(driver, "user_name", return_value="alice"),
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "cleanup failed"):
+                driver.run()
+        state = json.loads(driver.state_path().read_text(encoding="utf-8"))
+        self.assertEqual(state["phase"], "cleanup_failed")
+        self.assertEqual(state["failed_phase"], "submitting")
+        self.assertTrue(state["possibly_running"])
+        self.assertEqual(state["kernel"], "kernel-1")
+        self.assertIn("delete unavailable", state["cleanup_error"])
+
+    def test_cleanup_failed_state_blocks_run_even_when_kernel_is_missing(self) -> None:
+        driver._save_state(
+            {
+                "run_id": "previous-run",
+                "phase": "cleanup_failed",
+                "kernel": "kernel-previous",
+                "possibly_running": True,
+            }
+        )
+        canonical = notebook("TARGET_DATE = None\n")
+        with (
+            patch.object(driver, "load_notebook", return_value=canonical),
+            patch.object(driver, "start_server") as start,
+            patch.object(
+                driver, "acquire_account_run_lock", return_value=object()
+            ) as acquire,
+            patch.object(driver, "release_account_run_lock") as release,
+            patch.object(driver, "kernels", return_value=[]) as kernels,
+            patch.object(driver, "push_notebook") as push,
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "recover"):
+                driver.run()
+        start.assert_not_called()
+        acquire.assert_not_called()
+        kernels.assert_not_called()
+        push.assert_not_called()
+        release.assert_not_called()
+
+    def test_cleanup_failed_race_is_blocked_after_account_lock(self) -> None:
+        canonical = notebook("TARGET_DATE = None\n")
+        unresolved = {
+            "run_id": "concurrent-run",
+            "phase": "cleanup_failed",
+            "kernel": "kernel-concurrent",
+        }
+        with (
+            patch.object(driver, "load_notebook", return_value=canonical),
+            patch.object(driver, "_load_state", side_effect=[None, unresolved]),
+            patch.object(driver, "start_server") as start,
+            patch.object(
+                driver, "acquire_account_run_lock", return_value=object()
+            ) as acquire,
+            patch.object(driver, "release_account_run_lock") as release,
+            patch.object(driver, "kernels") as kernels,
+            patch.object(driver, "push_notebook") as push,
+        ):
+            with self.assertRaisesRegex(driver.DriverError, "kernel-concurrent"):
+                driver.run()
+        start.assert_called_once()
+        acquire.assert_called_once()
+        release.assert_called_once()
+        kernels.assert_not_called()
+        push.assert_not_called()
+
+    def test_recover_resolves_cleanup_failed_state_before_next_run(self) -> None:
+        driver._save_state(
+            {
+                "run_id": "previous-run",
+                "phase": "cleanup_failed",
+                "kernel": "kernel-previous",
+                "possibly_running": True,
+                "canonical_restored": False,
+                "restore_error": "restore unavailable",
+            }
+        )
+        canonical = notebook("TARGET_DATE = None\n")
+        with (
+            patch.object(driver, "load_notebook", return_value=canonical),
+            patch.object(driver, "start_server"),
+            patch.object(driver, "acquire_account_run_lock", return_value=object()),
+            patch.object(driver, "release_account_run_lock") as release,
+            patch.object(driver, "push_notebook") as push,
+            patch.object(driver, "delete_kernel") as delete,
+        ):
+            driver.recover()
+        push.assert_called_once_with(canonical)
+        delete.assert_called_once_with("kernel-previous")
+        release.assert_called_once()
+        state = json.loads(driver.state_path().read_text(encoding="utf-8"))
+        self.assertEqual(state["phase"], "aborted")
+        self.assertTrue(state["canonical_restored"])
+        self.assertTrue(state["kernel_deleted"])
+        self.assertFalse(state["possibly_running"])
+        self.assertIn("recovered_at_utc", state)
+
+    def test_restore_and_kernel_cleanup_failures_are_both_preserved(self) -> None:
+        canonical = notebook("TARGET_DATE = None\nprint('one')\n")
+        fake_ws = FakeWebSocket()
+        pushes = 0
+
+        def fake_push(value):
+            nonlocal pushes
+            pushes += 1
+            if pushes > 1:
+                raise OSError("restore unavailable")
+
+        def fake_api(method, path, data=None, **kwargs):
+            if method == "POST":
+                return {"id": "kernel-1"}
+            if method == "DELETE":
+                raise OSError("delete unavailable")
+            raise AssertionError((method, path, data, kwargs))
+
+        with (
+            patch.object(driver, "load_notebook", return_value=canonical),
+            patch.object(driver, "start_server"),
+            patch.object(driver, "acquire_account_run_lock", return_value=object()),
+            patch.object(driver, "release_account_run_lock"),
+            patch.object(driver, "kernels", return_value=[]),
+            patch.object(driver, "cloud_workbooks", return_value=[]),
+            patch.object(driver, "push_notebook", side_effect=fake_push),
+            patch.object(driver, "api", side_effect=fake_api),
+            patch.object(driver, "_ws_connect", return_value=fake_ws),
+            patch.object(driver, "user_name", return_value="alice"),
+        ):
+            with self.assertRaisesRegex(
+                driver.DriverError,
+                "cloud notebook may retain the historical-date override.*kernel cleanup failed",
+            ):
+                driver.run("2026-08-07")
+        state = json.loads(driver.state_path().read_text(encoding="utf-8"))
+        self.assertEqual(state["phase"], "cleanup_failed")
+        self.assertFalse(state["canonical_restored"])
+        self.assertIn("restore unavailable", state["restore_error"])
+        self.assertIn("delete unavailable", state["cleanup_error"])
+
+    def test_failed_cloud_restore_blocks_next_run_after_kernel_is_deleted(self) -> None:
         canonical = notebook("TARGET_DATE = None\nprint('one')\n")
         fake_ws = FakeWebSocket()
         pushes = 0
@@ -215,7 +516,11 @@ class RunExtractTests(unittest.TestCase):
         self.assertEqual(pushes, 3)
         self.assertEqual(len(deletes), 1)
         state = json.loads(driver.state_path().read_text(encoding="utf-8"))
-        self.assertEqual(state["phase"], "aborted")
+        self.assertEqual(state["phase"], "cleanup_failed")
+        self.assertFalse(state["possibly_running"])
+        self.assertTrue(state["kernel_deleted"])
+        self.assertFalse(state["canonical_restored"])
+        self.assertIn("restore unavailable", state["restore_error"])
 
     def test_busy_kernel_blocks_duplicate_run_before_push(self) -> None:
         canonical = notebook("TARGET_DATE = None\n")
@@ -257,12 +562,17 @@ class RunExtractTests(unittest.TestCase):
             patch.object(driver, "cloud_workbooks", return_value=[]),
             patch.object(driver, "push_notebook"),
             patch.object(driver, "api", side_effect=fake_api),
-            patch.object(driver, "_save_state", side_effect=[None, OSError("disk full")]),
+            patch.object(
+                driver,
+                "_save_state",
+                side_effect=[None, OSError("disk full"), None],
+            ) as save_state,
             patch.object(driver, "user_name", return_value="alice"),
         ):
             with self.assertRaises(OSError):
                 driver.run()
         self.assertEqual(len(deletes), 1)
+        self.assertEqual(save_state.call_count, 3)
 
     def test_freshness_rejects_unchanged_cloud_version(self) -> None:
         item = {
@@ -441,6 +751,7 @@ class RunExtractTests(unittest.TestCase):
                 sys.modules,
                 {"websocket": SimpleNamespace(WebSocketTimeoutException=TimeoutError)},
             ),
+            patch.object(driver, "require_dependencies"),
             patch.object(driver, "start_server"),
             patch.object(driver, "user_name", return_value="alice"),
             patch.object(driver, "api", return_value={"id": "kernel-1"}),
@@ -461,6 +772,7 @@ class RunExtractTests(unittest.TestCase):
                 sys.modules,
                 {"websocket": SimpleNamespace(WebSocketTimeoutException=TimeoutError)},
             ),
+            patch.object(driver, "require_dependencies"),
             patch.object(driver, "start_server"),
             patch.object(driver, "user_name", return_value="alice"),
             patch.object(driver, "api", return_value={"id": "kernel-1"}),
@@ -480,6 +792,7 @@ class RunExtractTests(unittest.TestCase):
                 sys.modules,
                 {"websocket": SimpleNamespace(WebSocketTimeoutException=TimeoutError)},
             ),
+            patch.object(driver, "require_dependencies"),
             patch.object(driver, "start_server"),
             patch.object(driver, "user_name", return_value="alice"),
             patch.object(driver, "api", return_value={"id": "kernel-1"}),
@@ -511,6 +824,7 @@ class RunExtractTests(unittest.TestCase):
                 sys.modules,
                 {"websocket": SimpleNamespace(WebSocketTimeoutException=TimeoutError)},
             ),
+            patch.object(driver, "require_dependencies"),
             patch.object(driver, "kernels", side_effect=[busy, idle]),
             patch.object(driver, "_ws_connect", return_value=websocket),
             patch.object(driver, "delete_kernel") as delete,
@@ -530,6 +844,7 @@ class RunExtractTests(unittest.TestCase):
                 sys.modules,
                 {"websocket": SimpleNamespace(WebSocketTimeoutException=TimeoutError)},
             ),
+            patch.object(driver, "require_dependencies"),
             patch.object(driver, "kernels", side_effect=[busy, idle]),
             patch.object(driver, "_ws_connect", return_value=websocket),
             patch.object(driver, "delete_kernel") as delete,
@@ -591,6 +906,56 @@ class RunExtractTests(unittest.TestCase):
         )
         with self.assertRaises(driver.DriverError):
             driver.configure(args)
+
+    def test_configure_rejects_temporary_run_output_without_opt_in(self) -> None:
+        args = SimpleNamespace(
+            base_url=driver.DEFAULT_BASE_URL,
+            output_dir=Path(self.tempdir.name) / "output",
+            token_file=None,
+            initial_watch_seconds=60,
+            command="run",
+            allow_temporary_output=False,
+        )
+        with self.assertRaisesRegex(driver.DriverError, "temporary output"):
+            driver.configure(args)
+
+    def test_configure_rejects_temporary_fetch_output_without_opt_in(self) -> None:
+        args = SimpleNamespace(
+            base_url=driver.DEFAULT_BASE_URL,
+            output_dir=Path(self.tempdir.name) / "output",
+            token_file=None,
+            command="fetch",
+            allow_temporary_output=False,
+        )
+        with self.assertRaisesRegex(driver.DriverError, "temporary output"):
+            driver.configure(args)
+
+    def test_configure_allows_explicit_temporary_run_output(self) -> None:
+        output = Path(self.tempdir.name) / "output"
+        args = SimpleNamespace(
+            base_url=driver.DEFAULT_BASE_URL,
+            output_dir=output,
+            token_file=None,
+            initial_watch_seconds=60,
+            command="run",
+            allow_temporary_output=True,
+        )
+        with redirect_stdout(io.StringIO()):
+            driver.configure(args)
+        self.assertEqual(driver.CONFIG.output_dir, output.resolve())
+
+    def test_configure_allows_explicit_temporary_fetch_output(self) -> None:
+        output = Path(self.tempdir.name) / "output"
+        args = SimpleNamespace(
+            base_url=driver.DEFAULT_BASE_URL,
+            output_dir=output,
+            token_file=None,
+            command="fetch",
+            allow_temporary_output=True,
+        )
+        with redirect_stdout(io.StringIO()):
+            driver.configure(args)
+        self.assertEqual(driver.CONFIG.output_dir, output.resolve())
 
 
 if __name__ == "__main__":

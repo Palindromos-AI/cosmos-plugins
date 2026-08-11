@@ -1,6 +1,6 @@
 {
   "name": "cosmos-stockdata-tools",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Fetch and validate daily China A-share and index data with a bundled portable SuperMind runtime.",
   "author": {
     "name": "Jason"
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Cosmos Stockdata Tools",
     "shortDescription": "Fetch and validate daily China stock-market data.",
-    "longDescription": "Bundles a portable SuperMind notebook, JupyterHub driver, and fail-closed workbook validator for Beijing-time A-share and index extraction. It supports each user's own SuperMind account without external project paths or bundled credentials; akshare and baostock remain future extensions for confirmed coverage gaps.",
+    "longDescription": "Bundles a portable SuperMind notebook, JupyterHub driver, and fail-closed workbook validator for Beijing-time A-share and index extraction, with pre-mutation dependency checks, durable output protection, recovery-gated failed-run state, and separate index-catalog and quote-coverage validation. It supports each user's own SuperMind account without external project paths or bundled credentials. No fallback is currently bundled; after a confirmed SuperMind coverage gap and user approval, baostock is preferred and akshare is reserved for requirements baostock cannot cover or explicit user direction.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],

@@ -15,7 +15,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 from validate_workbook import (  # noqa: E402
     ValidationContract,
+    expected_all_index_minimum,
     expected_index_count,
+    expected_quoted_index_minimum,
     validate_workbook,
 )
 
@@ -26,6 +28,7 @@ CONTRACT = ValidationContract(
     min_industry_coverage=0.5,
     min_concept_coverage=0.5,
     min_all_indexes=2,
+    min_quoted_indexes=1,
 )
 
 
@@ -47,13 +50,15 @@ def create_valid_workbook(path: Path) -> None:
         "mtss",
         "stocks_meta",
         "valuation",
-        "indexes_all",
         "indexes_meta",
     ):
         sheet = workbook.create_sheet(name)
         sheet.append(["value"])
         sheet.append([1])
-    workbook["indexes_all"].append([2])
+    indexes_all = workbook.create_sheet("indexes_all")
+    indexes_all.append(["symbol", "close", "has_quote"])
+    indexes_all.append(["index-a", 100.0, True])
+    indexes_all.append(["index-b", None, False])
     workbook.save(path)
 
 
@@ -128,6 +133,22 @@ class ValidateWorkbookTests(unittest.TestCase):
         self.edit(lambda workbook: workbook["indexes_all"].delete_rows(3))
         self.assertIn("all_indexes", self.failures())
 
+    def test_quoted_index_minimum_fails(self) -> None:
+        def remove_quotes(workbook):
+            workbook["indexes_all"]["B2"] = None
+            workbook["indexes_all"]["C2"] = False
+
+        self.edit(remove_quotes)
+        self.assertIn("quoted_indexes", self.failures())
+
+    def test_index_quote_flag_must_match_close_presence(self) -> None:
+        self.edit(lambda workbook: setattr(workbook["indexes_all"]["C3"], "value", True))
+        self.assertIn("index_quote_flag", self.failures())
+
+    def test_missing_index_quote_column_fails(self) -> None:
+        self.edit(lambda workbook: setattr(workbook["indexes_all"]["C1"], "value", "wrong"))
+        self.assertIn("index_columns", self.failures())
+
     def test_empty_valuation_fails(self) -> None:
         self.edit(lambda workbook: workbook["valuation"].delete_rows(2))
         self.assertIn("valuation", self.failures())
@@ -193,6 +214,22 @@ class ValidateWorkbookTests(unittest.TestCase):
         )
         with self.assertRaises((ValueError, TypeError)):
             expected_index_count(notebook_path)
+
+    def test_packaged_notebook_defines_and_checks_quoted_index_minimum(self) -> None:
+        notebook_path = SCRIPTS / "extract_daily.ipynb"
+        self.assertEqual(expected_all_index_minimum(notebook_path), 20000)
+        self.assertEqual(expected_quoted_index_minimum(notebook_path), 4000)
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        source = "\n".join(
+            "".join(cell.get("source", ""))
+            if isinstance(cell.get("source", ""), list)
+            else str(cell.get("source", ""))
+            for cell in notebook["cells"]
+            if cell.get("cell_type") == "code"
+        )
+        self.assertIn("len(df_indexes_all) >= MIN_ALL_INDEXES", source)
+        self.assertIn("quoted_index_count < MIN_QUOTED_INDEXES", source)
+        self.assertIn("has_quote 与 close 非空状态不一致", source)
 
 
 if __name__ == "__main__":
