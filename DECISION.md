@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-08-11 — Distributed chat skills resolve user-specific runtime bindings
+
+- **Clarification:** Keep `Asia/Shanghai` collection boundaries and source-verification rules fixed, but resolve workspace root, app target, display timezone, and Node executable from each user's active task environment. Accept explicit overrides and never package machine paths, bundle identifiers, screen coordinates, or executable locations.
+- **Context:** `dingding-fetch` and `feishu-fetch` are distributed to users whose workspace layouts, localized app names, installation identifiers, host timezones, and runtime locations differ. These values are deployment bindings, not plugin behavior.
+
+- **Decision:** Package the four named placeholders `<workspace-root>`, `<app-target>`, `<display-timezone>`, and `<node-executable>` in both skill contracts while preserving the existing default output namespaces and Beijing-day semantics.
+- **Context:** Run-time resolution keeps each skill portable without making correctness-critical scope and completeness rules configurable.
+
+## 2026-08-11 — Package Dingding and Feishu Fetch in Cosmos Sources Tools
+
+- **Clarification:** Add the existing `dingding-fetch` and `feishu-fetch` skills to `cosmos-sources-tools` without redesigning their read-only desktop, Beijing-window, source-preservation, image-reading, or fail-visible completeness contracts.
+- **Context:** Both skills retrieve daily source material from signed-in collaboration apps and therefore belong beside the existing source-retrieval skills rather than in the knowledge-management or stock-data plugins.
+
+- **Decision:** Preserve the user-requested `dingding-fetch` and `feishu-fetch` identifiers and their complete source trees, expose them through the plugin's existing `./skills/` path, and raise the plugin's base version from `0.2.1` to `0.3.0` as a backward-compatible capability addition.
+- **Context:** Keeping each skill's instructions, metadata, references, and publisher together preserves its tested behavior and invocation while the existing marketplace entry continues to discover the parent plugin.
+
 ## 2026-08-10 — Keep distributed stock-data credentials per user
 
 - **Clarification:** `stockdata-fetch` is distributed to multiple users; the publisher's SuperMind token, account ID, and machine-specific absolute path must never become plugin defaults or packaged content.

@@ -1,7 +1,7 @@
 {
   "name": "cosmos-sources-tools",
-  "version": "0.2.1",
-  "description": "Fetch, verify, and locally archive daily source content from CLS and Knowledge Planet.",
+  "version": "0.3.0+codex.20260812065409",
+  "description": "Fetch, verify, and locally archive daily source content from CLS, Knowledge Planet, DingTalk, and Feishu.",
   "author": {
     "name": "Jason"
   },
@@ -10,14 +10,18 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Cosmos Sources Tools",
-    "shortDescription": "Archive daily CLS and Knowledge Planet content.",
-    "longDescription": "Retrieves and semantically filters the complete China Standard Time CLS telegraph feed, or uses the user's signed-in Chrome session to verify and archive every topic and attachment from one Knowledge Planet Beijing calendar day. Both skills write source-grounded local Markdown without introducing external model credentials.",
+    "shortDescription": "Archive daily CLS, Knowledge Planet, DingTalk, and Feishu content.",
+    "longDescription": "Retrieves and semantically filters the complete China Standard Time CLS telegraph feed, archives every topic and attachment from one Knowledge Planet Beijing calendar day through signed-in Chrome, or reads exact DingTalk and Feishu groups through signed-in desktop sessions. All four skills write source-grounded local Markdown without introducing external model credentials.",
     "developerName": "Jason",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Fetch and filter today's AI-related CLS telegraph feed.",
-      "Archive every topic and attachment from a Knowledge Planet for one Beijing calendar date."
+      "Archive every topic and attachment from a Knowledge Planet for one Beijing calendar date.",
+      "Filter today's messages from exact DingTalk or Feishu groups into source-faithful Markdown."
     ]
   }
 }
