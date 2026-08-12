@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib
+import importlib.metadata
 import json
 import os
 import re
@@ -47,6 +49,51 @@ _TOKEN_CACHE: str | None = None
 
 class DriverError(RuntimeError):
     pass
+
+
+DEPENDENCIES = {
+    "openpyxl": ("openpyxl", "3.1.5", ("load_workbook",)),
+    "websocket": (
+        "websocket-client",
+        "1.8.0",
+        ("create_connection", "WebSocketTimeoutException"),
+    ),
+}
+
+
+def require_dependencies(*modules: str) -> None:
+    failures = []
+    for module_name in modules:
+        distribution, expected_version, required_attributes = DEPENDENCIES[module_name]
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            failures.append(
+                f"{distribution}=={expected_version} import failed: {type(exc).__name__}: {exc}"
+            )
+            continue
+        try:
+            installed_version = importlib.metadata.version(distribution)
+        except importlib.metadata.PackageNotFoundError:
+            failures.append(f"{distribution} distribution metadata is missing")
+            continue
+        if installed_version != expected_version:
+            failures.append(
+                f"{distribution} version {installed_version} is installed; expected {expected_version}"
+            )
+        missing_attributes = [
+            attribute for attribute in required_attributes if not hasattr(module, attribute)
+        ]
+        if missing_attributes:
+            failures.append(
+                f"{distribution} missing API: {', '.join(missing_attributes)}"
+            )
+    if failures:
+        raise DriverError(
+            "local dependency preflight failed: "
+            + "; ".join(failures)
+            + "; install the bundled requirements.txt"
+        )
 
 
 def bj_now() -> str:
@@ -160,12 +207,32 @@ def _load_state() -> dict[str, Any] | None:
     return value
 
 
+def _require_resolved_cleanup() -> None:
+    previous_state = _load_state()
+    if previous_state and previous_state.get("phase") == "cleanup_failed":
+        kernel = previous_state.get("kernel") or "unknown"
+        raise DriverError(
+            "the previous run has unresolved cleanup_failed state for kernel "
+            f"{kernel}; run `recover` and confirm it succeeds before starting another extraction"
+        )
+
+
 def _is_within(path: Path, directory: Path) -> bool:
     try:
         path.resolve().relative_to(directory.resolve())
         return True
     except ValueError:
         return False
+
+
+def _is_temporary_output(path: Path) -> bool:
+    roots = {
+        Path(tempfile.gettempdir()).resolve(),
+        Path("/tmp").resolve(),
+        Path("/private/tmp").resolve(),
+        Path("/var/tmp").resolve(),
+    }
+    return any(_is_within(path, root) for root in roots)
 
 
 def _parse_utc_timestamp(value: Any, label: str) -> datetime:
@@ -496,14 +563,17 @@ def cloud_workbooks() -> list[dict[str, Any]]:
 
 
 def run(target_date: str | None = None) -> None:
+    require_dependencies("websocket")
     canonical = load_notebook()
     require_default_target(canonical)
     target_date = validate_date(target_date) if target_date else None
     submitted_notebook = notebook_for_date(canonical, target_date) if target_date else canonical
 
+    _require_resolved_cleanup()
     start_server()
     run_lock = acquire_account_run_lock()
     try:
+        _require_resolved_cleanup()
         busy = [
             kernel
             for kernel in kernels()
@@ -557,6 +627,7 @@ def run(target_date: str | None = None) -> None:
             try:
                 push_notebook(canonical)
                 canonical_restored = True
+                run_state["canonical_restored"] = True
                 print("已恢复云端 packaged notebook 的 TARGET_DATE = None")
             except BaseException as exc:
                 restore_error = exc
@@ -579,15 +650,51 @@ def run(target_date: str | None = None) -> None:
                 print("已在失败清理中恢复云端 TARGET_DATE = None")
             except BaseException as exc:
                 restore_error = exc
-        if kernel_id and (not submitted_state_saved or restore_error is not None):
-            if submitted_state_saved:
-                run_state["phase"] = "aborted"
+        abort_required = not submitted_state_saved or restore_error is not None
+        kernel_cleanup_error: BaseException | None = None
+        if abort_required:
+            failed_phase = run_state.get("phase")
+            kernel_deleted = kernel_id is None
+            if kernel_id:
                 try:
-                    _save_state(run_state)
+                    delete_kernel(kernel_id)
+                    kernel_deleted = True
                 except BaseException as exc:
+                    kernel_cleanup_error = exc
                     cleanup_error = exc
+            failure_text = redact(primary_error or restore_error or "submission aborted")
+            cleanup_confirmed = kernel_deleted and canonical_restored
+            if cleanup_confirmed:
+                run_state.update(
+                    {
+                        "phase": "aborted",
+                        "failed_phase": failed_phase,
+                        "aborted_at_utc": utc_now(),
+                        "possibly_running": False,
+                        "kernel_deleted": bool(kernel_id),
+                        "canonical_restored": True,
+                        "restore_error": redact(restore_error) if restore_error else None,
+                        "error": failure_text,
+                    }
+                )
+            else:
+                run_state.update(
+                    {
+                        "phase": "cleanup_failed",
+                        "failed_phase": failed_phase,
+                        "cleanup_failed_at_utc": utc_now(),
+                        "possibly_running": not kernel_deleted,
+                        "kernel_deleted": kernel_deleted,
+                        "canonical_restored": canonical_restored,
+                        "restore_error": redact(restore_error) if restore_error else None,
+                        "error": failure_text,
+                        "cleanup_error": (
+                            redact(kernel_cleanup_error) if kernel_cleanup_error else None
+                        ),
+                    }
+                )
             try:
-                delete_kernel(kernel_id)
+                _save_state(run_state)
             except BaseException as exc:
                 if cleanup_error is None:
                     cleanup_error = exc
@@ -597,26 +704,107 @@ def run(target_date: str | None = None) -> None:
             if cleanup_error is None:
                 cleanup_error = exc
 
-    if cleanup_error is not None:
-        raise DriverError(f"run cleanup failed: {redact(cleanup_error)}") from (
-            primary_error or cleanup_error
+    if cleanup_error is not None or restore_error is not None:
+        failures = []
+        if restore_error is not None:
+            if canonical_restored:
+                failures.append(
+                    "cloud notebook restore initially failed but the canonical notebook "
+                    "was restored on retry"
+                )
+            else:
+                failures.append(
+                    "cloud notebook may retain the historical-date override: "
+                    + redact(restore_error)
+                )
+        if kernel_cleanup_error is not None:
+            failures.append("kernel cleanup failed: " + redact(kernel_cleanup_error))
+        elif cleanup_error is not None:
+            failures.append("run cleanup failed: " + redact(cleanup_error))
+        if not canonical_restored or kernel_cleanup_error is not None:
+            failures.append("run `recover` successfully before another extraction")
+        raise DriverError("; ".join(failures)) from (
+            primary_error or restore_error or cleanup_error
         )
-    if restore_error is not None:
-        if canonical_restored:
-            raise DriverError(
-                "cloud notebook restore initially failed; the canonical notebook was restored on retry "
-                "and the submitted kernel was aborted"
-            ) from (primary_error or restore_error)
-        raise DriverError(
-            "historical-date cleanup failed; cloud notebook may retain the override. "
-            "Do not run another extraction until `push` succeeds."
-        ) from (primary_error or restore_error)
     if primary_error is not None:
         raise primary_error.with_traceback(primary_error.__traceback__)
     print("\n已脱开。全程约 25 分钟；用 watch 查看进度，再用 fetch 下载并验证。")
 
 
+def recover() -> None:
+    """Resolve an uncertain failed run before permitting another extraction."""
+    canonical = load_notebook()
+    require_default_target(canonical)
+    start_server()
+    run_lock = acquire_account_run_lock()
+    failures: list[str] = []
+    try:
+        run_state = _load_state()
+        if not run_state or run_state.get("phase") != "cleanup_failed":
+            raise DriverError("no cleanup_failed run state requires recovery")
+
+        canonical_restored = False
+        try:
+            push_notebook(canonical)
+            canonical_restored = True
+        except BaseException as exc:
+            failures.append("cloud notebook restore failed: " + redact(exc))
+
+        kernel_id = run_state.get("kernel")
+        kernel_deleted = not kernel_id
+        if kernel_id:
+            try:
+                delete_kernel(str(kernel_id))
+                kernel_deleted = True
+            except BaseException as exc:
+                failures.append("kernel cleanup failed: " + redact(exc))
+
+        if canonical_restored and kernel_deleted:
+            run_state.update(
+                {
+                    "phase": "aborted",
+                    "recovered_at_utc": utc_now(),
+                    "possibly_running": False,
+                    "kernel_deleted": bool(kernel_id),
+                    "canonical_restored": True,
+                    "restore_error": None,
+                    "cleanup_error": None,
+                }
+            )
+        else:
+            run_state.update(
+                {
+                    "phase": "cleanup_failed",
+                    "cleanup_failed_at_utc": utc_now(),
+                    "possibly_running": not kernel_deleted,
+                    "kernel_deleted": kernel_deleted,
+                    "canonical_restored": canonical_restored,
+                    "restore_error": next(
+                        (item for item in failures if item.startswith("cloud notebook")),
+                        None,
+                    ),
+                    "cleanup_error": next(
+                        (item for item in failures if item.startswith("kernel cleanup")),
+                        None,
+                    ),
+                }
+            )
+        _save_state(run_state)
+    finally:
+        try:
+            release_account_run_lock(run_lock)
+        except BaseException as exc:
+            failures.append("account lock release failed: " + redact(exc))
+
+    if failures:
+        raise DriverError(
+            "recovery failed: " + "; ".join(failures) + "; do not start another extraction"
+        )
+    print("恢复完成：默认云端 notebook 已确认，原 kernel 已删除，可重新运行。")
+
+
 def watch(seconds: int = 2400) -> None:
+    require_dependencies("websocket")
     completed = False
     active = kernels()
     if not active:
@@ -714,6 +902,7 @@ def _require_fresh_result(item: dict[str, Any], state: dict[str, Any] | None) ->
 
 
 def fetch(target_date: str | None = None, *, allow_existing: bool = False) -> Path:
+    require_dependencies("openpyxl")
     start_server()
     compact = _normalize_fetch_date(target_date)
     state = _load_state()
@@ -766,6 +955,7 @@ def fetch(target_date: str | None = None, *, allow_existing: bool = False) -> Pa
 
 
 def exec_code(code: str, timeout: int = 120) -> None:
+    require_dependencies("websocket")
     try:
         import websocket
     except ImportError as exc:
@@ -816,7 +1006,12 @@ def exec_code(code: str, timeout: int = 120) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    default_token_file = os.environ.get("SUPERMIND_TOKEN_FILE")
+    configured_token_file = os.environ.get("SUPERMIND_TOKEN_FILE")
+    default_token_file = (
+        Path(configured_token_file)
+        if configured_token_file
+        else Path.home() / ".config" / "supermind" / "token"
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-url",
@@ -827,13 +1022,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(os.environ.get("STOCKDATA_OUTPUT_DIR", Path.cwd() / "data" / "supermind")),
     )
-    parser.add_argument("--token-file", type=Path, default=Path(default_token_file) if default_token_file else None)
+    parser.add_argument("--token-file", type=Path, default=default_token_file)
+    parser.add_argument(
+        "--allow-temporary-output",
+        action="store_true",
+        help="Allow run/fetch output under an OS temporary directory for disposable tests",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("status")
     subparsers.add_parser("start-server")
     subparsers.add_parser("stop-server")
     subparsers.add_parser("push")
+    subparsers.add_parser("recover")
 
     pull_parser = subparsers.add_parser("pull")
     pull_parser.add_argument("--output", type=Path, required=True)
@@ -870,6 +1071,16 @@ def configure(args: argparse.Namespace) -> None:
         raise DriverError("token file must be outside the installed plugin directory")
     if token_file and _is_within(token_file, output_dir):
         raise DriverError("token file must be outside the output directory")
+    command = getattr(args, "command", None)
+    if (
+        command in {"run", "fetch"}
+        and _is_temporary_output(output_dir)
+        and not getattr(args, "allow_temporary_output", False)
+    ):
+        raise DriverError(
+            "temporary output is not durable; choose a persistent --output-dir or pass "
+            "--allow-temporary-output for a disposable test"
+        )
     CONFIG = RuntimeConfig(
         base_url=args.base_url.rstrip("/"),
         output_dir=output_dir,
@@ -878,6 +1089,8 @@ def configure(args: argparse.Namespace) -> None:
     )
     _USER_CACHE = None
     _TOKEN_CACHE = None
+    if command in {"run", "fetch"}:
+        print("本地输出目录:", output_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -892,6 +1105,8 @@ def main(argv: list[str] | None = None) -> int:
             stop_server()
         elif args.command == "push":
             push()
+        elif args.command == "recover":
+            recover()
         elif args.command == "pull":
             pull(args.output, force=args.force)
         elif args.command == "run":

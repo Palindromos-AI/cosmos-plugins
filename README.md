@@ -42,7 +42,7 @@ Packages these Skills:
 
 Packages this Skill:
 
-- `stockdata-fetch`: bundles the SuperMind notebook, portable JupyterHub driver, and fail-closed local validator needed to run, download, and verify Beijing-time daily A-share and index datasets. akshare and baostock are intentionally deferred until a confirmed SuperMind coverage gap requires them.
+- `stockdata-fetch`: bundles the SuperMind notebook, portable JupyterHub driver, and fail-closed local validator needed to run, download, and verify Beijing-time daily A-share and index datasets. No fallback is currently bundled. After a confirmed SuperMind coverage gap and explicit user approval, extension work prefers baostock's free API and uses akshare only when baostock cannot cover the requirement or the user explicitly requests it.
 
 ## Runtime requirements
 
@@ -52,7 +52,7 @@ Packages this Skill:
 - Obsidian operations require a compatible Obsidian installation and, where applicable, Obsidian CLI access.
 - `cls-fetch` requires Node.js with built-in `fetch` support and network access to `cls.cn`; it uses no credentials or external npm packages.
 - `zsxq-fetch` requires Node.js 22.13 or later, the Codex Chrome-control capability, and a Knowledge Planet session already signed in within Chrome. Every requested date and “today” use the Beijing `Asia/Shanghai` boundary rather than the host or browser timezone. Its deterministic runner uses only built-in Node.js APIs; native-pixel image tiling optionally installs the pinned `sharp` dependency from the skill-local lockfile after user approval.
-- `stockdata-fetch` requires Python 3.10+, the pinned packages in its bundled `requirements.txt`, a SuperMind research account, and a revocable JupyterHub API token supplied through `SUPERMIND_TOKEN` or an explicit token file outside both the plugin and output directory. It discovers each authenticated account's user ID dynamically and writes output to a caller-selected directory; no Jason-specific project, environment, account ID, token, or data is bundled. SuperMind's verified websocket flow sends the token as a query parameter, so the remote service or a proxy may record it in access logs; rotate the token after suspected exposure.
+- `stockdata-fetch` requires Python 3.10+, the pinned packages in its bundled `requirements.txt`, and each user's own SuperMind research account and revocable JupyterHub API token. It reads `SUPERMIND_TOKEN` first; otherwise it uses an explicit `--token-file`, `SUPERMIND_TOKEN_FILE`, or the per-user default `~/.config/supermind/token`. Token files remain outside both the plugin and output directory. It imports required modules and verifies their pinned versions and APIs before cloud mutation, discovers each authenticated account's user ID dynamically, blocks new runs behind explicit recovery when kernel or cloud-notebook cleanup is unresolved, and writes output to a durable caller-selected directory; OS temporary output requires an explicit disposable-test override. No Jason-specific project, environment, account ID, token, or data is bundled. SuperMind's verified websocket flow sends the token as a query parameter, so the remote service or a proxy may record it in access logs; rotate the token after suspected exposure.
 
 ## Update
 

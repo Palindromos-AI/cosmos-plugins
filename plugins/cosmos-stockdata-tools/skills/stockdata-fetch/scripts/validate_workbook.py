@@ -28,11 +28,12 @@ EXPECTED_SHEETS = (
 
 @dataclass(frozen=True)
 class ValidationContract:
+    expected_indexes: int
+    min_all_indexes: int
+    min_quoted_indexes: int
     min_stocks: int = 5000
-    expected_indexes: int = 22
     min_industry_coverage: float = 0.95
     min_concept_coverage: float = 0.90
-    min_all_indexes: int = 20000
 
 
 @dataclass(frozen=True)
@@ -66,8 +67,7 @@ def _cell_source(cell: dict[str, Any]) -> str:
     return "".join(source) if isinstance(source, list) else str(source)
 
 
-def expected_index_count(notebook_path: Path) -> int:
-    """Read INDEX_CODES from the packaged notebook instead of duplicating its length."""
+def _literal_notebook_assignment(notebook_path: Path, name: str) -> Any:
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
     code = "\n".join(
         _cell_source(cell)
@@ -80,11 +80,35 @@ def expected_index_count(notebook_path: Path) -> int:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if any(isinstance(target, ast.Name) and target.id == "INDEX_CODES" for target in targets):
+        if any(isinstance(target, ast.Name) and target.id == name for target in targets):
             values.append(ast.literal_eval(node.value))
-    if len(values) != 1 or not isinstance(values[0], list):
+    if len(values) != 1:
+        raise ValueError(f"packaged notebook must define exactly one literal {name}")
+    return values[0]
+
+
+def expected_index_count(notebook_path: Path) -> int:
+    """Read INDEX_CODES from the packaged notebook instead of duplicating its length."""
+    value = _literal_notebook_assignment(notebook_path, "INDEX_CODES")
+    if not isinstance(value, list):
         raise ValueError("packaged notebook must define exactly one literal INDEX_CODES list")
-    return len(values[0])
+    return len(value)
+
+
+def expected_all_index_minimum(notebook_path: Path) -> int:
+    """Read the full index-catalog floor from the packaged notebook."""
+    value = _literal_notebook_assignment(notebook_path, "MIN_ALL_INDEXES")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("packaged notebook MIN_ALL_INDEXES must be a positive integer")
+    return value
+
+
+def expected_quoted_index_minimum(notebook_path: Path) -> int:
+    """Read the quoted-index floor from the packaged notebook."""
+    value = _literal_notebook_assignment(notebook_path, "MIN_QUOTED_INDEXES")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("packaged notebook MIN_QUOTED_INDEXES must be a positive integer")
+    return value
 
 
 def _expected_date(path: Path, explicit: str | None) -> str:
@@ -147,7 +171,11 @@ def validate_workbook(
     day = _expected_date(workbook_path, expected_date)
     if contract is None:
         source = notebook_path or Path(__file__).with_name("extract_daily.ipynb")
-        contract = ValidationContract(expected_indexes=expected_index_count(source))
+        contract = ValidationContract(
+            expected_indexes=expected_index_count(source),
+            min_all_indexes=expected_all_index_minimum(source),
+            min_quoted_indexes=expected_quoted_index_minimum(source),
+        )
 
     checks: list[CheckResult] = []
     try:
@@ -245,12 +273,55 @@ def validate_workbook(
         for code, sheet_name, minimum in (
             ("theme_members", "theme_members", 1),
             ("mtss", "mtss", 1),
-            ("all_indexes", "indexes_all", contract.min_all_indexes),
             ("valuation", "valuation", 1),
         ):
             actual = _data_row_count(book[sheet_name])
             checks.append(
                 CheckResult(code, actual >= minimum, f"actual={actual}, minimum={minimum}")
+            )
+
+        all_indexes = book["indexes_all"]
+        index_columns, index_rows = _rows(all_indexes)
+        missing_index_columns = sorted({"close", "has_quote"} - set(index_columns))
+        checks.append(
+            CheckResult(
+                "index_columns",
+                not missing_index_columns,
+                f"missing={missing_index_columns}",
+            )
+        )
+        if not missing_index_columns:
+            all_index_count = 0
+            quoted_index_count = 0
+            quote_flag_ok = True
+            for row in index_rows:
+                if not any(value is not None for value in row):
+                    continue
+                all_index_count += 1
+                close = _value(row, index_columns, "close")
+                has_quote = _value(row, index_columns, "has_quote")
+                expected_has_quote = close is not None
+                if not isinstance(has_quote, bool) or has_quote != expected_has_quote:
+                    quote_flag_ok = False
+                quoted_index_count += int(expected_has_quote)
+            checks.extend(
+                [
+                    CheckResult(
+                        "all_indexes",
+                        all_index_count >= contract.min_all_indexes,
+                        f"actual={all_index_count}, minimum={contract.min_all_indexes}",
+                    ),
+                    CheckResult(
+                        "quoted_indexes",
+                        quoted_index_count >= contract.min_quoted_indexes,
+                        f"actual={quoted_index_count}, minimum={contract.min_quoted_indexes}",
+                    ),
+                    CheckResult(
+                        "index_quote_flag",
+                        quote_flag_ok,
+                        "has_quote exactly matches whether close is non-null",
+                    ),
+                ]
             )
     except (TypeError, ValueError) as exc:
         checks.append(CheckResult("workbook_schema", False, str(exc)))

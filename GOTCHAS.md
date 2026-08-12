@@ -1,5 +1,35 @@
 # Gotchas
 
+## A publisher's working token configuration is not distributable plugin state
+
+- **Symptom:** A distributed skill works only on the publisher's machine, or worse, exposes one shared SuperMind credential to every installer.
+- **Root cause:** A personal absolute path, token value, or account ID was treated as part of the plugin instead of per-user runtime configuration.
+- **How to avoid:** Resolve the current user's own token from `SUPERMIND_TOKEN`, an explicit/configured token-file path, or `~/.config/supermind/token`; never bundle credentials or `/Users/<name>` paths, and state the per-user ownership contract in `SKILL.md`.
+
+## A complete index catalog can still contain too few usable quotes
+
+- **Symptom:** `indexes_all` passes the 20,000-row minimum even when most rows have no closing price.
+- **Root cause:** SuperMind's index catalog contains many active metadata records whose source families do not expose daily quotes through `get_price`; catalog completeness and quote coverage are different contracts. Three observed trading dates contained 23,307–23,637 catalog rows but 4,076, 17,174, and 4,108 quoted rows.
+- **How to avoid:** Require at least 20,000 catalog rows and 4,000 non-null closes independently, require `has_quote` to match close availability exactly, and read both floors from the packaged notebook so cloud and local validation cannot drift.
+
+## Local dependency checks must happen before cloud mutation
+
+- **Symptom:** A missing `websocket-client` package is discovered only after the notebook is pushed and a kernel is created.
+- **Root cause:** The driver imported the websocket transport only when connecting to the newly created kernel.
+- **How to avoid:** Import each command-specific module, verify the pinned distribution version and required APIs, and do so before starting the server, pushing the notebook, creating a kernel, downloading a workbook, or writing run state.
+
+## Kernel cleanup alone does not make failed run state accurate
+
+- **Symptom:** A failed submission deletes its kernel but leaves `.runstate.json` at `phase: submitting`.
+- **Root cause:** The driver recorded `aborted` only for a narrow cloud-restoration failure after full submission.
+- **How to avoid:** Confirm both cleanup boundaries: delete the owned kernel and restore the canonical cloud notebook after a historical run. Record `phase: aborted` only when both are safe; otherwise record `cleanup_failed`, preserve the two errors independently, block every new run before remote inspection, and require explicit `recover` to resolve the exact recorded run.
+
+## A temporary worktree is not a durable stock-data destination
+
+- **Symptom:** A valid workbook is delivered from `/tmp` or `/private/tmp` and disappears when the disposable worktree is removed.
+- **Root cause:** The default output path follows the current working directory, which may itself be temporary.
+- **How to avoid:** Reject `run` and `fetch` output under OS temporary roots unless the caller explicitly uses `--allow-temporary-output` for a disposable test; always print the resolved output directory before remote work.
+
 ## OpenPyXL requires the temporary download to keep an Excel suffix
 
 - **Symptom:** A valid downloaded workbook fails before validation with `InvalidFileException` when its temporary filename ends in `.part`.

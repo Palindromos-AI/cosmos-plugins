@@ -1,5 +1,37 @@
 # Decisions
 
+## 2026-08-10 — Keep distributed stock-data credentials per user
+
+- **Clarification:** `stockdata-fetch` is distributed to multiple users; the publisher's SuperMind token, account ID, and machine-specific absolute path must never become plugin defaults or packaged content.
+- **Context:** Every installation authenticates against the user's own SuperMind research account. The proven local configuration uses `~/.config/supermind/token`, which is portable as a home-relative convention without embedding a publisher-specific absolute path.
+
+- **Decision:** Default to the current user's `~/.config/supermind/token`, allow `SUPERMIND_TOKEN_FILE` and explicit `--token-file` path overrides, and retain `SUPERMIND_TOKEN` for ephemeral secret injection. Require skill instructions to state that every user provides their own token and that no token or publisher-home absolute path may enter the plugin, output, version control, examples, marketplace metadata, or chat.
+- **Context:** This preserves the proven local setup while keeping the distributed artifact account-neutral and preventing publisher credentials from propagating to users.
+
+## 2026-08-10 — Separate index-catalog completeness from quote coverage
+
+- **Clarification:** `indexes_all` represents the complete SuperMind index catalog for the requested date, not a promise that every catalog entry exposes a daily quote.
+- **Context:** Across 2026-08-04, 2026-08-07, and 2026-08-10, catalog size was 23,307–23,637 while non-null closes were 4,076, 17,174, and 4,108. Some source families consistently exposed no daily quotes through this endpoint.
+
+- **Decision:** Validate at least 20,000 catalog rows, at least 4,000 rows with a non-null close, and exact agreement between `has_quote` and close availability. Define both floors once in the packaged notebook and read them into the offline validator.
+- **Context:** This catches broad quote loss without falsely treating metadata-only index families as failed extraction.
+
+## 2026-08-10 — Preflight runtime and require durable stock-data output
+
+- **Clarification:** Local configuration failures must occur before any SuperMind mutation, and retained results must not default to a disposable filesystem location.
+- **Context:** The first live test pushed the notebook and created a kernel before discovering a missing websocket dependency; the cleaned failure still left stale `submitting` state, and the successful workbook landed inside a temporary worktree.
+
+- **Decision:** Import command-specific dependencies and verify their pinned versions and required APIs before remote work. Record a failed run as `aborted` only after both its owned kernel and canonical cloud notebook are confirmed safe. Record either unresolved condition as `cleanup_failed`, preserve both errors independently, block later runs even if the kernel appears idle or absent, and require the explicit `recover` command to restore the canonical notebook and delete the exact recorded kernel. Reject temporary `run` and `fetch` destinations unless the caller explicitly opts into a disposable test.
+- **Context:** These boundaries prevent avoidable cloud changes, make recovery state truthful, and keep successful results durable by default.
+
+## 2026-08-10 — Prefer Baostock for approved stock-data fallbacks
+
+- **Clarification:** SuperMind remains the first-choice source for every new `stockdata-fetch` requirement. A minimal capability probe must confirm a real coverage gap before any fallback is proposed, and the user must approve the exact fallback extension before implementation.
+- **Context:** An operational failure such as a timeout, permission error, or temporary platform outage does not prove that SuperMind lacks the requested data.
+
+- **Decision:** For an approved fallback, use baostock whenever it covers the requirement; use akshare only when baostock cannot cover it or the user explicitly requests akshare. Keep fallback scripts separate from the SuperMind notebook and identify the source in their output.
+- **Context:** Baostock provides a free API with a higher expected request success rate. Akshare depends more heavily on web scraping and upstream page structures, so its endpoints have a higher failure risk.
+
 ## 2026-08-10 — Package a self-contained SuperMind stock-data plugin
 
 - **Clarification:** Add `stockdata-fetch` in a standalone `cosmos-stockdata-tools` plugin, separate from knowledge-management and source-archival plugins.
