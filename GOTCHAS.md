@@ -1,5 +1,17 @@
 # Gotchas
 
+## Distributed skills cannot inherit the developer's runtime bindings
+
+- **Symptom:** An installed skill works on the packaging machine but cannot locate another user's app, output directory, display timezone, or runtime.
+- **Root cause:** Machine-specific paths, bundle identifiers, host assumptions, or executable locations were encoded as universal plugin settings.
+- **How to avoid:** Keep business invariants fixed, but resolve `<workspace-root>`, `<app-target>`, `<display-timezone>`, and `<node-executable>` for each run. Accept explicit overrides, stop on ambiguous required values, and keep resolved settings out of the packaged skill and reader report.
+
+## The official plugin validator requires PyYAML before validation begins
+
+- **Symptom:** `validate_plugin.py` exits with `ModuleNotFoundError: No module named 'yaml'` and reports no plugin findings.
+- **Root cause:** The helper imports PyYAML at process startup, while the host `python3` may not provide that package.
+- **How to avoid:** Run the validator in a user-designated micromamba environment that already includes PyYAML. If none is designated, ask the user to create or select one; do not install into or silently choose another environment, and do not describe the startup failure as a manifest validation failure.
+
 ## OpenPyXL requires the temporary download to keep an Excel suffix
 
 - **Symptom:** A valid downloaded workbook fails before validation with `InvalidFileException` when its temporary filename ends in `.part`.

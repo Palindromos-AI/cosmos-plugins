@@ -1,0 +1,115 @@
+---
+name: feishu-fetch
+description: Read all messages in exact user-specified Feishu (飞书) group chats/群聊 from Beijing midnight through one frozen run cutoff, semantically select messages matching a user-supplied information requirement, extract unchanged text and substantive image text, and write a content-only Markdown (.md) snapshot. Use when the user invokes $feishu-fetch or asks to read, filter, extract, archive, or 汇总 one or more Feishu groups' 当天/今日消息 through the current time. Do not use for sending messages, scheduled runs, non-group conversations, or unattended background monitoring.
+---
+
+# Feishu Fetch
+
+Read the requested Feishu groups through the existing desktop session, select relevant messages, and preserve their source wording in a Markdown snapshot. Do not summarize, paraphrase, translate, or analyze the selected content.
+
+## Required inputs
+
+- Require exact group names and one filter requirement. Examples of a filter requirement include “汇总 AI 相关内容” and “提取所有与本周项目风险有关的信息”.
+- Accept optional overrides for the output path, app target, and display timezone. Otherwise resolve the portable runtime bindings below.
+- Ask the user when a required input is missing or ambiguous. Do not guess a group from a partial name or infer the requested topic from earlier unrelated context.
+- Treat the ordered group list as the complete requested scope. Do not add similar groups, bot chats, or private chats.
+
+## Runtime bindings
+
+Resolve these values for the current run before freezing the collection window. Keep them run-local; never write personal paths or environment settings back into the skill or report.
+
+- `<workspace-root>`: use the writable workspace or working directory supplied by the current task context. An explicit output path may be used without a workspace root. If neither resolves to a stable writable location, ask the user instead of choosing a machine directory.
+- `<app-target>`: accept an optional app target supplied by the user. Otherwise discover the accessible signed-in desktop app using the environment's installed labels, including `Feishu` and `飞书`, and verify the opened application identity. Do not assume an installation path, bundle/package identifier, localized window title, screen coordinates, or persistent accessibility indexes.
+- `<display-timezone>`: use an optional user-supplied override or determine the timezone used by the app's displayed timestamps from the current app/host environment. If it cannot be proven, ask the user; never infer it from the agent's own location.
+- `<node-executable>`: resolve a Node.js executable from the active workspace runtime or executable search path and confirm that it can run the bundled publisher. Do not embed an absolute executable path. If no compatible executable is available, stop before publication and report the missing runtime.
+
+## 1. Freeze the Beijing window
+
+- Resolve one run cutoff before opening the first group. Express it as an explicit instant and as Beijing local time in `Asia/Shanghai` (`UTC+08:00`).
+- Define the collection window as Beijing `00:00:00` on the cutoff's Beijing calendar date through the run cutoff, inclusive.
+- Apply the same cutoff to every group even when later groups are inspected several minutes later. Exclude messages proved to be newer than the cutoff.
+- Treat Feishu's displayed timestamps as app-local display values. Resolve their date from the nearest date separator or message timestamp, interpret them in `<display-timezone>`, convert the represented timestamp to an instant, and then convert that instant to Beijing time before testing the window.
+- Do not use the host calendar date as the collection boundary. If a relative, missing, or conflicting displayed timestamp cannot be resolved to the Beijing window, retain any recoverable source content but mark that group incomplete.
+- Respect the UI's actual timestamp precision. When a message observed after run start falls in the same displayed minute as the cutoff and no stable message identity was frozen at or before the cutoff, its side of the cutoff is unknowable. Exclude every cutoff-ambiguous message from the selected source set, exclude any proved-newer content, and mark that group incomplete. Never invent seconds from an `HH:mm` label.
+
+## 2. Open each exact group read-only
+
+- Follow the available Computer Use skill and operate the existing signed-in Feishu desktop app resolved as `<app-target>`. Use accessibility text first and screenshots when sender, timestamp, message grouping, or image association is not exposed clearly.
+- Refresh the app state after every navigation or scroll and re-derive accessibility element indexes. Never reuse stale element indexes.
+- Keep the session read-only: do not send, react, edit, delete, pin, or mark messages manually. Do not open composer tools, type into the message entry area, or trigger Feishu bot commands. Opening a group may let Feishu automatically clear its unread badge; never invoke an explicit mark-read action.
+- Resolve every exact group name through Feishu's global search or conversation list. Confirm the opened header equals the requested group and that the result is a group chat, not a person, bot, document, or app result. If multiple accessible groups share the exact group name or the result is otherwise ambiguous, ask the user instead of choosing one.
+- Do not inspect cookies, local storage, application caches, passwords, or account credentials. Do not use an unofficial Feishu API.
+
+## 3. Prove the day's message range
+
+For each group, perform these steps sequentially:
+
+1. Move to the conversation bottom and identify the newest visible message at or before the run cutoff. Freeze that message's displayed sender, timestamp, message type, and source content as the upper boundary. Do not let later arrivals expand the run.
+2. Read every message occurrence from that upper boundary backward. After each upward scroll, refresh the app state and record only newly exposed occurrences; do not reuse stale element indexes.
+3. Continue to scroll upward until a message or date separator is strictly before the Beijing day after timestamp conversion. That crossing proves the lower boundary. Seeing only a “today” label without the prior-day crossing is insufficient.
+4. Expand every collapsed or truncated in-window text message. Fully read its source body, visible rich-text/card content, sender, timestamp, attachment order, and image count before classifying its relevance. If only a prefix can be read, the group's relevance inventory is incomplete even when that message is later excluded.
+5. Preserve each in-window message's exact group name, displayed sender, resolved Beijing timestamp, text, attachment order, and image count. Treat repeated identical messages as separate occurrences.
+6. Inspect every in-window image closely enough to determine semantic relevance, including images attached to messages with no useful surrounding text. Read [references/image-extraction.md](references/image-extraction.md) completely before processing the first image.
+7. Treat every in-group thread or topic as part of the requested group. Open each thread/topic that the group timeline shows may contain an in-window root or reply, freeze its newest reply at or before the run cutoff, and read every in-window reply backward through the Beijing lower boundary. Record each reply as its own message occurrence, retain displayed root/quote context only as part of that occurrence, then return to the main group transcript and refresh app state before continuing. If the UI cannot prove whether a thread/topic contains in-window messages or cannot prove its reply range, mark the group incomplete.
+
+Do not claim complete coverage unless the upper boundary, lower boundary, every intervening main-transcript and in-group thread/topic message occurrence, every full message body used for relevance classification, and every image occurrence are accounted for. If Feishu cannot load farther, hides an unknown range, exposes an unresolved timestamp, leaves text collapsed, exposes an unsupported message type whose relevance cannot be determined, or prevents an image from being associated with its message, mark the group incomplete instead of estimating. Do not follow a Feishu document or external link beyond its visible message/card text unless the user explicitly expands the scope.
+
+## 4. Select relevant source content
+
+- Apply the filter requirement semantically, not keyword-only. Consider the complete message text and the substantive content of every attached image.
+- Prefer recall when relevance is plausible. Include upstream, downstream, policy, financing, product, research, implementation, risk, and other context when it materially satisfies the requested topic.
+- Select whole message occurrences. Preserve the source wording, paragraph breaks, lists, quotations, code, and visible table structure exactly; do not rewrite a fragment into a cleaner sentence.
+- Keep an attached image with its parent message and preserve image order. Include only the image's substantive extracted content according to the image reference.
+- Exclude unrelated messages, reactions, read receipts, typing indicators, group notices unrelated to the requested information, and interface labels. Preserve a quoted, forwarded, or replied-to message only when it is displayed as part of the selected source message.
+- Do not include greetings or social filler solely because they appear near matched messages. Include neighboring context only when its own source content is necessary to understand the matched information.
+- Do not add conclusions, a narrative summary, recommendations, or inferred facts.
+
+## 5. Write the Markdown snapshot
+
+- Generate an eight-character random hexadecimal `run-id`. Default to `<workspace-root>/output/feishu/YYYY-MM-DD-HHmmss-<run-id>-feishu-digest.md`, using the Beijing run cutoff for `YYYY-MM-DD-HHmmss`. Honor an explicit output path.
+- When any requested group or selected attachment is incomplete, write the recovered report to the sibling `*.incomplete.md` path. Never replace a complete report with an incomplete report.
+- Refuse to overwrite an existing or unmarked file. Ask for a different explicit path if the resolved path already exists.
+- Write a content-only report. Keep UI actions, search terms, screenshots, accessibility indexes, local temporary paths, and verification notes out of the report.
+- Organize selected occurrences by requested group order, then chronological order within each group. Preserve repeated occurrences.
+- Use this reader-facing structure:
+
+```markdown
+# 飞书群聊原文汇总
+
+- 北京日期：YYYY-MM-DD
+- 截止时间：YYYY-MM-DD HH:mm:ss UTC+08:00
+- 群聊：群 A、群 B
+- 筛选要求：用户原始要求
+- 完整性：complete | incomplete
+
+## 群聊：群 A
+
+### HH:mm · 发送者
+
+消息原文
+
+#### 图片 1
+
+图片中的实质内容
+```
+
+- Write `未发现符合要求的消息` under a group with complete coverage but no matching messages.
+- For a selected message whose image or source text is partly unreadable, retain only the reliably recovered source fragment and add one short localized note such as `[图片部分内容无法可靠辨认]`. Add a final `## 未能完整读取的内容` section listing only the affected group, timestamp, and reader-relevant reason. For cutoff-minute ambiguity, exclude the ambiguous message and list the group, displayed minute, and `该分钟内可能存在晚于截止时刻、已排除的消息` in this section.
+- Set `完整性：complete` only when every requested group has proven day boundaries and every selected source occurrence is complete. Otherwise set `incomplete` and use the incomplete filename.
+- Render first to a unique temporary sibling draft named `.feishu-digest-<run-id>.tmp`. Re-read and verify that draft before any final path exists. If verification fails, correct and re-verify the draft or remove that exact draft; never publish an unverified report.
+- Immediately after the final verification pass, compute the draft's lowercase SHA-256 digest. Then run `<node-executable> <skill-directory>/scripts/publish-report.mjs <draft> <target> <expected-sha256>` for a content-bound atomic no-clobber publish. The helper refuses changed bytes and publishes a private same-directory copy containing exactly the verified bytes. If a default target collides, choose a new `run-id`; if an explicit target exists, retain the verified draft and ask the user for another path.
+
+## 6. Verify and report
+
+- Before publication, compare every selected occurrence in the temporary sibling draft with the captured source record. Confirm group name, sender, timestamp, text, image order, image content, and chronological order.
+- Confirm that no excluded interface text or internal process metadata entered the report and that no selected source wording was summarized or silently omitted.
+- Report the Beijing date, run cutoff, requested group count, selected message count, completeness, and clickable absolute output path.
+- If no file could be written, state the exact blocking group or boundary, why completeness cannot be established, and whether any existing output changed.
+
+## Hard rules
+
+- Keep all collected content local. Never send, publish, upload, or forward it.
+- Never use a non-Beijing collection boundary.
+- Never silently omit a selected image or unreadable source fragment.
+- Never describe an incomplete report as complete.
+- Never turn extracted source material into a summary; this skill filters and preserves original content.
