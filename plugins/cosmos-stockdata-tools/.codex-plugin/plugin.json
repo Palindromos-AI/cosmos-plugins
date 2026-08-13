@@ -1,7 +1,7 @@
 {
   "name": "cosmos-stockdata-tools",
-  "version": "0.1.2",
-  "description": "Fetch and validate daily China A-share and index data with a bundled portable SuperMind runtime.",
+  "version": "0.2.0",
+  "description": "Incrementally grow China stock-data scripts in each user's durable external workspace.",
   "author": {
     "name": "Jason"
   },
@@ -10,15 +10,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Cosmos Stockdata Tools",
-    "shortDescription": "Fetch and validate daily China stock-market data.",
-    "longDescription": "Bundles a portable SuperMind notebook, JupyterHub driver, and fail-closed workbook validator for Beijing-time A-share and index extraction, with pre-mutation dependency checks, durable output protection, recovery-gated failed-run state, and separate index-catalog and quote-coverage validation. It supports each user's own SuperMind account without external project paths or bundled credentials. No fallback is currently bundled; after a confirmed SuperMind coverage gap and user approval, baostock is preferred and akshare is reserved for requirements baostock cannot cover or explicit user direction.",
+    "shortDescription": "Grow durable per-user stock-data scripts safely.",
+    "longDescription": "Keeps the installed plugin instruction-only while each user accumulates reusable China stock-data scripts in a durable external workspace as requirements arrive; plugin or marketplace updates do not own that workspace. Each extension preserves existing behavior and follows the source priority SuperMind, then baostock, then AKShare, with explicit provenance and contract-specific validation.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Fetch and validate the latest completed Beijing trading day's full A-share dataset.",
-      "Download an existing SuperMind workbook for a specified trading date.",
-      "Check whether SuperMind can provide a new stock-data field."
+      "Create the first stock-data script in my durable external workspace, starting with SuperMind.",
+      "Extend my existing stockdata workspace with another requested dataset.",
+      "Run a capability already accumulated in my stockdata workspace."
     ]
   }
 }

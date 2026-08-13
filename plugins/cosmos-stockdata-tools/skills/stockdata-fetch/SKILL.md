@@ -1,137 +1,110 @@
 ---
 name: stockdata-fetch
-description: Fetch, download, validate, inspect, or extend daily China A-share and index data through the bundled SuperMind extraction runtime. Use when the user asks to 获取、更新、下载、检查或补充 A 股、指数、行情、情绪、概念板块、融资融券、估值或证券元数据，or needs to operate or troubleshoot SuperMind stock-data extraction. Supports the latest completed Beijing trading day and explicit historical trading dates; interpret every date boundary in Asia/Shanghai.
+description: >-
+  Incrementally build, test, run, and extend China stock-market data scripts in
+  each user's durable external workspace, choosing sources in strict priority
+  order: SuperMind, then baostock, then AKShare. Use when Codex needs to add,
+  change, or execute reusable A-share, index, fund, sector, financial,
+  valuation, factor, trading, or security-metadata capabilities. Keep the
+  installed skill instruction-only and accumulate only the capabilities that
+  user actually requests, without a fixed full extraction or universal schema.
 ---
 
 # Stockdata Fetch
 
-Use the bundled SuperMind notebook, portable JupyterHub driver, and local workbook validator. Do not depend on an external project checkout.
+Grow one persistent stock-data implementation for each user from their successive requirements. Keep the installed skill immutable; create and evolve scripts in a durable workspace outside the plugin.
 
-## Resolve the runtime
+## Resolve the persistent workspace
 
-1. Locate this skill directory from the active `SKILL.md`; never assume an installation path.
-2. Set these conceptual paths:
+Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, dependencies, configuration, credentials, or retrieved data in them.
 
-```text
-RUNNER=<skill-dir>/scripts/run_extract.py
-VALIDATOR=<skill-dir>/scripts/validate_workbook.py
-REQUIREMENTS=<skill-dir>/requirements.txt
-```
+Resolve `<stockdata-workspace>` before implementation:
 
-3. Use a user-designated Python 3.10+ environment. If none has been designated, ask before selecting or creating one.
-4. The driver imports command-specific local dependencies, verifies their pinned distribution versions and required APIs, and does so before any remote mutation. Before installing missing packages, ask for approval and install `REQUIREMENTS` with the environment's required package manager.
-5. Resolve output to an absolute, durable directory. Default to `<current-project>/data/supermind` unless the user supplies another location. `run` and `fetch` reject OS temporary directories; use the global `--allow-temporary-output` option only for an explicitly disposable test.
+1. Collect every available candidate: an absolute path explicitly supplied in the current request, `STOCKDATA_WORKSPACE` if configured, and the current user's binding file at `~/.config/cosmos-stockdata-tools/workspace`. The binding file contains one absolute workspace path and no credentials.
+2. Normalize and compare every candidate. If multiple candidates disagree, stop and show their resolved paths; do not apply priority or choose one silently.
+3. On first use, if no candidate exists, require the user to explicitly choose a durable absolute path. Never infer it from the current directory or nearby stockdata files.
+4. If the binding file does not exist, take the confirmed candidate whether it came from an explicit path, `STOCKDATA_WORKSPACE`, or the answer to the first-use question; validate it, then atomically write that same resolved path to the binding file before creating or running scripts. Creating the binding's parent directory is part of this disclosed first-use setup.
+5. If the binding file exists, require every other supplied candidate to match it before proceeding.
 
-Every user needs their own SuperMind research account and JupyterHub API token. The distributed plugin never provides, shares, or inherits the publisher's token. Do not ask a user to paste a token into chat. By default, read that user's token from `~/.config/supermind/token`, where `~` is the current user's home directory. The user should create the directory with mode `700` and the token file with mode `600`.
+Treat the binding as identity, not as a convenience default:
 
-Resolve credentials in this order:
+- Resolve symlinks where possible and verify that the bound directory exists before every change or run.
+- Reuse the recorded binding across later tasks, regardless of the current directory.
+- Change the binding only after the user explicitly authorizes rebinding or migration. Before rebinding, inspect both locations and preserve the old workspace; never merge, move, copy, or delete it implicitly.
+- Write or replace the binding atomically. The binding is local per-user state and must remain outside the plugin, marketplace snapshot, and workspace itself.
 
-1. `SUPERMIND_TOKEN`, for an ephemeral value injected by the user's environment or secret manager.
-2. An explicit global `--token-file <path>` option.
-3. The path in `SUPERMIND_TOKEN_FILE`.
-4. The per-user default `~/.config/supermind/token`.
+Reject any workspace inside the installed skill, a plugin cache, a marketplace snapshot, an OS temporary directory, or another user's project. Each user owns an independent `<stockdata-workspace>`; their extensions are not automatically shared with other installations.
 
-Every token file must remain outside both the installed plugin and output directory. Never place credentials inside the plugin, output tree, command output, version control, examples, or marketplace metadata. The driver discovers the authenticated SuperMind user ID from the user's token. Jupyter websocket authentication includes the token in the connection query because that is the verified SuperMind transport; the remote service or an intervening proxy may therefore record it in access logs. Use a revocable token and rotate it after suspected exposure.
+Inspect `<stockdata-workspace>` and its project instructions before planning:
 
-## Resolve the request
+- For the first requirement, create the smallest reusable `scripts/` implementation and tests in `<stockdata-workspace>`.
+- For every later requirement, read its existing entry points, source adapters, tests, dependencies, contracts, and project documents, then extend them without duplicating or discarding accepted capabilities.
+- Preserve existing interfaces and behavior unless the user explicitly changes them. Refactor when necessary to keep the cumulative implementation clear.
 
-- Distinguish inspecting status, downloading an existing cloud result, running a fresh full extraction, and probing a new field.
-- Treat “today,” relative dates, trading-day boundaries, filenames, and reports as `Asia/Shanghai`, regardless of the host timezone.
-- Default an unspecified extraction date to the latest completed Beijing trading day. The bundled notebook applies a 15:05 Beijing cutoff.
-- Keep all results local unless the user separately authorizes publishing or messaging them.
+Marketplace updates must preserve `<stockdata-workspace>` because the marketplace does not own or write it. If a capability should become shared by all users, handle that as a separate, explicitly authorized upstream contribution and versioned marketplace release; never treat edits to one installed cache as shared state.
 
-## Use the SuperMind workflow
+## Establish the requested contract
 
-Run global options before the command:
+Confirm the material boundaries of the current requirement:
 
-```bash
-<python> "$RUNNER" --output-dir "<absolute-output-dir>" status
-```
+- instruments or universe;
+- fields and their financial definitions, units, and currency;
+- frequency, date range, trading calendar, and `Asia/Shanghai` boundary;
+- price-adjustment convention where relevant;
+- output interface, schema, storage location, and update mode;
+- acceptance checks for coverage, freshness, missing values, and duplicates.
 
-Available commands:
+Ask only when a missing boundary would materially change the result. Do not invent future requirements, a universal schema, or an all-market full extraction. Treat the user's current request as authorization to implement that requested capability; do not ask again merely because the source ladder reaches baostock or AKShare.
 
-- `status`: show server, kernel, cloud workbook, and last-trigger state. Cloud files are listed only when the research server is running.
-- `start-server` / `stop-server`: manage the research server.
-- `run [--date YYYY-MM-DD]`: push an in-memory run copy and submit the full extraction. Omit `--date` for the latest completed trading day.
-- `watch [--seconds 2400]`: stream subsequent output until the kernel is idle or the timeout expires.
-- `fetch [--date YYYY-MM-DD] [--allow-existing]`: download a workbook and automatically run the bundled local validator. Without `--allow-existing`, it must be newer than the cloud-file baseline recorded by the latest submitted run.
-- `exec "CODE" [--timeout 120]`: execute one minimal capability probe.
-- `push`: restore the packaged default notebook to the cloud without launching an extraction.
-- `recover`: resolve a recorded `cleanup_failed` run by restoring the packaged default notebook and deleting that run's exact recorded kernel. Both actions must be confirmed before another `run` is allowed.
-- `pull --output <path>`: save a stripped cloud notebook snapshot outside the plugin; it never overwrites the packaged notebook.
+## Follow the source ladder
 
-Global `--allow-temporary-output` permits `run` or `fetch` under an OS temporary directory only for a disposable test. Put it before the command, and never use it for a result the user expects to retain.
+Evaluate sources at the dataset or field level, in this order:
 
-### Download an existing result
+1. **SuperMind:** Start here. Use official documentation, the user's existing research environment, or one minimal capability probe to verify the exact endpoint, field, date range, and semantics required.
+2. **baostock:** Use it only for the portion SuperMind demonstrably cannot supply. First distinguish a real coverage gap from authentication, permissions, rate limits, network failures, or temporary service errors.
+3. **AKShare:** Use it only when both SuperMind and baostock cannot cover that portion. Treat web-scraping-backed interfaces as more change-prone and validate them accordingly.
 
-1. Run `status` once.
-2. If the server is stopped, run `start-server`, then run `status` again.
-3. Confirm the requested date exists in a cloud filename.
-4. Run `fetch --allow-existing --date YYYY-MM-DD` once. `--allow-existing` is explicit because this branch intentionally has no fresh-run baseline.
-5. Accept the result only when `fetch` exits zero and prints `VALIDATION PASSED`.
+Do not query later sources for routine duplication when an earlier source already meets the contract. A workflow may combine sources, but each dataset or field must have one declared primary source. Never hide a source change behind a common column name.
 
-### Run a fresh extraction
+## Extend the workspace by one vertical slice
 
-1. Run `status` to inspect current state. `run` also rejects observed `busy`, `starting`, or `restarting` kernels and serializes same-account submissions started on the same machine. SuperMind does not expose a cross-host atomic lock, so the status check still matters when another machine can use the same account.
-2. If no equivalent job or valid cloud result exists, run `run` once. Add `--date YYYY-MM-DD` only for an explicit historical trading date.
-3. Do not edit the packaged notebook to select a date. The driver applies the date in memory, submits it, and immediately restores the cloud notebook to `TARGET_DATE = None`. Its failure path performs the same restoration and removes a partially submitted kernel. It records `aborted` only after both required cleanup actions are confirmed. An unconfirmed kernel deletion or cloud-notebook restoration records `cleanup_failed`, preserves each failure independently, and blocks every later `run` until `recover` succeeds.
-4. Attach `watch --seconds 2400`; keep the terminal session alive and provide periodic user updates rather than triggering another run.
-5. After the kernel becomes idle, run `fetch` for the target date without `--allow-existing`. The driver parses cloud timestamps as absolute UTC instants and requires the result to be strictly newer than both the saved baseline and this run's start time. Treat the local validator as the final authority even when the console output appeared successful.
+For a well-defined change, work test-first:
 
-If cleanup reports `cleanup_failed`, stop. Run `recover` once; do not launch another extraction unless it confirms both the canonical cloud notebook and exact-kernel deletion.
+1. Add contract tests under `<stockdata-workspace>` for the requested fields, dates, identifiers, null behavior, and output shape.
+2. Create or extend source-specific adapters under `<stockdata-workspace>/scripts/`; do not replace the cumulative script suite with a new one-off program.
+3. Extend the shared entry point and normalize only the fields needed by accepted requirements.
+4. Validate a small real sample, including representative instruments, a non-trading day or empty response, and the relevant date and adjustment boundaries.
+5. Write retrieved data to a user-selected durable location. Keep the interface reusable through parameters or configuration rather than machine-specific constants; decide deliberately whether generated data belongs in the workspace's `.gitignore`.
+6. Run the workspace tests, linter, and build. Update its architecture, changelog, gotchas, and decisions where applicable.
 
-## Validate fail-closed
+Keep source adapters separate from normalization and delivery. When combining sources, define code mappings, trading-calendar handling, units, adjustment conventions, precedence, and conflict behavior explicitly. Fail visibly when a required source or field is unavailable; do not silently return partial data.
 
-`fetch` validates a uniquely named temporary download before replacing any local workbook. When validation fails, it leaves an `.invalid-<UTC timestamp>.xlsx` diagnostic beside the intended output, preserves any prior valid local file, and exits non-zero. It checks:
+Record enough provenance to reproduce each dataset:
 
-- workbook readability and all nine expected sheets;
-- the filename/content Beijing date;
-- stock-row and full-index-row minimums;
-- at least 4,000 indexes with a non-null close, with `has_quote` exactly matching close availability;
-- exact packaged common-index count;
-- `high >= low` for non-null stock rows;
-- industry and concept coverage;
-- non-empty theme membership, margin-financing, and valuation data.
+- source and endpoint or function;
+- retrieval time and requested market-time range;
+- material parameters and adjustment convention;
+- source columns and normalization rules;
+- source-library version when it can affect behavior.
 
-The validator reads `INDEX_CODES`, `MIN_ALL_INDEXES`, and `MIN_QUOTED_INDEXES` from the packaged notebook, so those contracts cannot silently drift. Never weaken a threshold, accept a missing valuation sheet, or present a retained failed workbook as complete.
+## Resolve runtime and credentials at implementation time
 
-To revalidate an already-downloaded file without any network call, run:
+Use the environment designated for `<stockdata-workspace>`. For Python work, require a user-designated micromamba environment and install approved packages with `micromamba run -n <env> uv pip install ...`. If no environment is designated, ask the user to create or select one. Add a workspace-local dependency declaration only when the first implementation needs it, then maintain it as scripts evolve.
 
-```bash
-<python> "$VALIDATOR" "/absolute/path/supermind_full_YYYYMMDD.xlsx"
-```
-
-## Handle new data requirements
-
-1. Use one minimal `exec` probe to determine whether SuperMind exposes the required function or field.
-2. If supported, propose the exact packaged notebook sheet or field change and wait for scope confirmation before editing plugin source.
-3. If unsupported, explain the confirmed SuperMind coverage gap and ask whether the user wants a fallback script. Do not silently switch sources or treat a transient SuperMind failure as a coverage gap.
-4. After the user approves a fallback extension, check baostock coverage first. Prefer baostock whenever it can satisfy the requirement because it provides a free API with a higher expected request success rate. Use akshare only when baostock cannot cover the requirement or the user explicitly directs otherwise; disclose that akshare's web-scraping-dependent endpoints have a higher failure risk when upstream pages change.
-5. Propose the exact fallback script, output provenance, and validation changes, then wait for the user's explicit approval before editing plugin source. Keep fallback code separate from the SuperMind notebook so every result's source remains explicit.
-6. Treat `<skill-dir>/scripts/extract_daily.ipynb` in the marketplace source repository as the sole trusted SuperMind extraction program. If the installed plugin cache is not writable source, report its path instead of patching it in place.
-
-Do not perform routine cross-source validation. Use a temporary cross-source spot check only when output is abnormal or extraction logic changed.
-
-## Failure handling
-
-- `401` or `403`: ask the user to issue a new SuperMind token; never expose the old token.
-- Server cannot start: stop then start once. If it still fails, report likely platform maintenance rather than looping.
-- `InputRejected` immediately: treat it as compile-time review rejection. Rewrite forbidden constructs such as `import sys`, `DataFrame.eval`, or `DataFrame.query`; retrying identical code will not help.
-- Kernel idle with no current workbook: report the captured error and cloud timestamp; never fetch an older file as success.
-- Fresh `fetch` reports that the cloud workbook is unchanged: treat the run as failed or incomplete. Use `--allow-existing` only when the user explicitly asked to retrieve a pre-existing result.
-- Validation fails because valuation is empty: explain that SuperMind valuation data is normally populated later that evening and wait for a later rerun.
-- Network, websocket, permission, or dependency error: surface the exact non-zero path. Do not hide it behind a fallback.
-- Missing local dependency: the command must fail before pushing a notebook or creating a kernel. Ask before installing the pinned requirements, then retry once after installation.
-- Run state reports `cleanup_failed`: the driver refuses every new `run`, even if the recorded kernel appears idle or absent. Run `recover`; it restores the canonical cloud notebook and deletes only the exact recorded kernel, treating `404` as confirmed absence. Continue only after recovery exits zero.
+Use each user's own source accounts and project-specific authentication method. Never ask the user to paste credentials into chat, and never place tokens, cookies, account IDs, machine-specific paths, or downloaded private data in this skill, source control, examples, logs, or output metadata.
 
 ## Hard rules
 
-- Keep Beijing time explicit in commands, filenames, validation, and reports.
-- Keep the packaged notebook as the sole executable source of truth for SuperMind extraction.
-- Never copy, print, commit, or bundle a token.
-- Never launch duplicate full extractions or repeatedly probe a failing source.
-- Never weaken validation or report partial output as complete.
-- Never write a retained result under an OS temporary directory; require a durable output path unless the user explicitly requested a disposable test.
-- Do not add fallback code until a SuperMind coverage gap is confirmed and the user approves the exact extension.
-- For an approved fallback, use baostock when it covers the requirement; use akshare only when baostock does not cover it or the user explicitly requests akshare.
-- Do not commit, merge, push, install, publish, or change unrelated files unless the user separately authorizes that action.
+- Do not recreate or assume the removed full-extraction notebook, runner, workbook validator, fixed sheet set, or fixed coverage thresholds.
+- Keep the installed Skill instruction-only. Never write runtime state into the plugin cache or marketplace snapshot.
+- On first use, require an explicit workspace choice and persist its external binding. On later uses, reuse and verify that binding; never infer another workspace from the current directory.
+- Begin each user's `<stockdata-workspace>` with no extraction script. Create its `scripts/` for the first requirement, then evolve those existing scripts for every later requirement.
+- Implement only the current requirement, but preserve all previously accepted capabilities in the cumulative skill implementation.
+- Preserve the source priority `SuperMind -> baostock -> AKShare` for every dataset or field.
+- Distinguish unsupported data from operational failure with empirical evidence.
+- Keep China-market dates and trading sessions explicit in `Asia/Shanghai`.
+- State the source of every delivered dataset and disclose any mixed-source result.
+- Never weaken an agreed acceptance check or present partial output as complete.
+- Never claim that one user's workspace changes are automatically shared with other users.
+- Share reusable capability across all users only through a separate upstream review and versioned release.
+- Do not commit, merge, push, publish, install dependencies, or change unrelated files without the user's authorization.
