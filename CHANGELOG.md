@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Contract-neutral stockdata implementation references covering the workspace processing architecture and previously validated SuperMind API, batching, completeness, delayed-data, and failure-classification patterns.
 - A generic SuperMind token/JupyterHub runtime for executing external workspace scripts, downloading remote results, redacting credentials, and cleaning up the exact kernel it creates.
 - Atomic per-user runtime binding for the external stockdata workspace, personal token-file path, and user-selected micromamba environment, without storing token contents.
 - `dingding-fetch` and `feishu-fetch` in `cosmos-sources-tools`, with read-only signed-in desktop collection, frozen Beijing-time windows, complete group-message coverage, semantic source selection, image-content extraction, and content-bound atomic Markdown publication.
@@ -19,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-stockdata-tools` to `0.2.2` for the backward-compatible implementation-reference addition.
+- Routed `stockdata-fetch` through the relevant read-only architecture and SuperMind implementation references before creating or changing workspace business code, without restoring any fixed extractor or data contract.
 - Corrected `stockdata-fetch` version `0.2.1` to retain immutable SuperMind execution infrastructure while keeping all evolving business scripts outside the replaceable plugin cache.
 - Rebuilt `stockdata-fetch` around successive user data contracts, durable per-user workspaces outside replaceable plugin caches, source-specific adapters, explicit provenance, and contract-specific validation; bumped `cosmos-stockdata-tools` to `0.2.0` for the breaking workflow change.
 - Made both distributed chat skills environment-portable by resolving workspace root, localized app target, display timezone, and Node executable per run instead of embedding developer-machine settings.
@@ -33,4 +36,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 
 - Removed compatibility with the superseded one-line stockdata workspace binding; `runtime.json` is now the only supported per-user binding format.
-- Removed the stockdata full-extraction notebook, business-specific runner, fixed workbook validator, fixed workbook dependency, and their implementation-specific tests. Future requirements create and extend business scripts in user-owned external workspaces; only generic SuperMind transport remains bundled.
+- Removed the stockdata full-extraction notebook, business-specific runner, fixed workbook validator, fixed workbook dependency, and their implementation-specific tests. Future requirements create and extend business scripts in user-owned external workspaces; the plugin retains only generic SuperMind transport and contract-neutral read-only references.

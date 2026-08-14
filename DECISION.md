@@ -1,12 +1,20 @@
 # Decisions
 
+## 2026-08-13 — Package contract-neutral stockdata implementation references
+
+- **Clarification:** `stockdata-fetch` may preserve architecture and source-call knowledge proven by an earlier implementation, but must not restore that implementation's fixed market scope, datasets, fields, workbook sheets, thresholds, runner lifecycle, or executable extraction program.
+- **Context:** Removing the predetermined extractor also removed reliable SuperMind API shapes, batching rules, completeness checks, delayed-data semantics, and failure classifications. Agents then had to rediscover those implementation facts while writing each requirement-driven workspace script.
+
+- **Decision:** Bundle two immutable read-only references: one for the contract-to-delivery workspace architecture and one for previously validated SuperMind implementation patterns. Route the Skill to read the relevant reference before creating or changing business code. Treat examples as evidence for implementation shape only; the accepted user requirement remains the sole source of business scope and validation thresholds. Keep all executable business scripts, mutable dependencies, credentials, retrieved data, and accepted contracts in the user's durable external workspace.
+- **Context:** This refines rather than reverses the requirement-driven decision below. Packaged source may contain account-neutral transport code and contract-neutral reference documentation; it may not contain a predetermined business program or universal schema.
+
 ## 2026-08-13 — Build stock-data capabilities from user requirements
 
 - **Clarification:** `stockdata-fetch` must not carry a predetermined full-market extractor, fixed workbook, universal schema, speculative field set, or mutable user business scripts. It must retain generic SuperMind execution infrastructure so external workspace scripts remain runnable. Installed plugin directories are versioned caches and are not durable shared state.
 - **Context:** The previous bundled extractor encoded one large contract before users had asked for it, while writing later user extensions into an installed Skill would isolate them per machine and risk losing them on reinstall or version replacement.
 
 - **Decision:** Bundle an immutable generic SuperMind runtime limited to per-user configuration, token authentication, JupyterHub server control, code execution, file download, redaction, and exact owned-kernel cleanup. On first use, require each user to choose a durable external `<stockdata-workspace>`, personal token-file absolute path, and micromamba environment together; atomically persist only those paths and the environment name in external local `runtime.json`, never the token content. `runtime.json` is the sole supported binding format; do not read or migrate older workspace-binding files. Later tasks must verify and reuse all three instead of inferring them from the current directory or host. Reconfiguration requires explicit authorization and must preserve the old workspace and token file. Create the smallest reusable business scripts and tests in the workspace, then extend it while preserving accepted capabilities. Marketplace updates must not write to this workspace. Choose sources at field or dataset level in the order `SuperMind -> baostock -> AKShare`. Share a business capability across installations only through a separate authorized upstream review and versioned release.
-- **Context:** This supersedes the fixed SuperMind extraction program, workbook contract, business-specific driver lifecycle, thresholds, implicit token-path defaults, and skill-local business-script accumulation decisions. User workspaces, token files, runtime metadata, credentials, and private data remain external; only account-neutral transport code enters a marketplace release.
+- **Context:** This supersedes the fixed SuperMind extraction program, workbook contract, business-specific driver lifecycle, thresholds, implicit token-path defaults, and skill-local business-script accumulation decisions. User workspaces, token files, runtime metadata, credentials, and private data remain external; only account-neutral transport code and contract-neutral reference documentation enter a marketplace release.
 
 ## 2026-08-11 — Distributed chat skills resolve user-specific runtime bindings
 

@@ -13,11 +13,19 @@ description: >-
 
 # Stockdata Fetch
 
-Grow one persistent stock-data implementation for each user from their successive requirements. Keep the installed skill immutable; create and evolve business scripts in a durable workspace outside the plugin. Use the bundled generic runtime only for SuperMind authentication, JupyterHub execution, file download, and exact kernel cleanup.
+Grow one persistent stock-data implementation for each user from their successive requirements. Keep the installed skill immutable; create and evolve business scripts in a durable workspace outside the plugin. Use the bundled generic runtime only for SuperMind authentication, JupyterHub execution, file download, and exact kernel cleanup. Use the bundled references as read-only implementation guidance, never as a fixed extraction contract.
+
+## Read the implementation references
+
+Read `<skill-dir>/references/implementation-architecture.md` completely before creating the first workspace business capability or changing module boundaries. It defines the contract-to-delivery flow, module responsibilities, failure semantics, provenance, and minimum verification matrix without prescribing a universal schema.
+
+Read `<skill-dir>/references/supermind-api-patterns.md` completely before writing or changing a SuperMind adapter or capability probe. It records previously validated API shapes, batching and completeness patterns, delayed-data handling, and known research-environment constraints. Treat each pattern as evidence for implementation shape, not authorization for its example dataset, field, limit, or output.
+
+Do not copy either reference into the user workspace. Apply only the sections relevant to the accepted requirement. When the reference does not establish an exact endpoint, field, date range, permission, or financial meaning, verify it through official documentation, the user's existing research environment, or one minimal capability probe.
 
 ## Configure the per-user runtime
 
-Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, mutable dependencies, runtime configuration, credentials, or retrieved data in them. The generic `<skill-dir>/scripts/supermind_runtime.py` and its pinned `requirements.txt` are versioned, read-only infrastructure; they are not the user's evolving extraction program.
+Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, mutable dependencies, runtime configuration, credentials, or retrieved data in them. The generic `<skill-dir>/scripts/supermind_runtime.py`, its pinned `requirements.txt`, and the implementation references are versioned, read-only infrastructure and guidance; they are not the user's evolving extraction program.
 
 On first use, collect and confirm these three values together in a single setup:
 
@@ -119,7 +127,7 @@ Use each user's own source accounts and project-specific authentication method. 
 ## Hard rules
 
 - Do not recreate or assume the removed full-extraction notebook, runner, workbook validator, fixed sheet set, or fixed coverage thresholds.
-- Keep only generic, immutable SuperMind transport infrastructure in the installed Skill. Never write runtime state, tokens, business scripts, or retrieved data into the plugin cache or marketplace snapshot.
+- Keep only generic, immutable SuperMind transport infrastructure and read-only, contract-neutral implementation references in the installed Skill. Never write runtime state, tokens, executable business scripts, fixed business contracts, or retrieved data into the plugin cache or marketplace snapshot.
 - On first use, configure workspace, token-file path, and micromamba environment together, then persist only those three metadata values externally. On later uses, reuse and verify all three; never infer replacements from the current directory or host environment.
 - Begin each user's `<stockdata-workspace>` with no extraction script. Create its `scripts/` for the first requirement, then evolve those existing scripts for every later requirement.
 - Implement only the current requirement, but preserve all previously accepted capabilities in the cumulative skill implementation.

@@ -12,11 +12,17 @@
 - **Root cause:** The helper imports PyYAML at process startup, while the host `python3` may not provide that package.
 - **How to avoid:** Run the validator in a user-designated micromamba environment that already includes PyYAML. If none is designated, ask the user to create or select one; do not install into or silently choose another environment, and do not describe the startup failure as a manifest validation failure.
 
+## Removing a fixed extractor can also discard proven implementation knowledge
+
+- **Symptom:** Requirement-driven workspace scripts repeatedly rediscover SuperMind call shapes, batching behavior, date handling, and failure boundaries that a previous implementation had already validated.
+- **Root cause:** Reusable implementation knowledge was not separated from the fixed fields, market scope, sheets, thresholds, and delivery contract that correctly had to be removed.
+- **How to avoid:** Preserve contract-neutral architecture and source-call patterns as read-only references, route the Skill to the relevant reference before implementation, and keep every executable business script and accepted data contract in the user's external workspace.
+
 ## Deleting transport with the full extractor leaves workspace scripts unable to run
 
 - **Symptom:** The Skill correctly stores evolving business scripts outside the plugin, but those scripts cannot authenticate to or execute on SuperMind.
 - **Root cause:** Immutable generic execution infrastructure was mistaken for the removed fixed extraction program and deleted with it.
-- **How to avoid:** Bundle and version only generic SuperMind configuration, authentication, JupyterHub execution, download, redaction, and owned-kernel cleanup. Keep every dataset, field, date, threshold, workbook, and other mutable business contract in the external workspace.
+- **How to avoid:** Bundle and version only generic SuperMind configuration, authentication, JupyterHub execution, download, redaction, owned-kernel cleanup, and contract-neutral read-only implementation references. Keep every executable dataset implementation, field, date, threshold, workbook, and other mutable business contract in the external workspace.
 
 ## Generic transport can still destroy or leak credentials at output and redirect boundaries
 
