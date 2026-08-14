@@ -1,5 +1,11 @@
 # Gotchas
 
+## Package file assertions must ignore generated Python bytecode caches
+
+- **Symptom:** The stockdata marketplace test fails after otherwise successful Python unit tests because `__pycache__` appears in the source tree.
+- **Root cause:** The file assertion enumerated ignored runtime artifacts even though `.gitignore` excludes Python bytecode from the packaged source contract.
+- **How to avoid:** Exclude `__pycache__` directories and `.pyc`, `.pyo`, and `.pyd` files when asserting the exact distributable skill tree.
+
 ## SuperMind research kernels can reject ordinary local-Python patterns before execution
 
 - **Symptom:** A script that is valid locally is rejected by remote input review, fails on a newer pandas alias, or cannot write Parquet.

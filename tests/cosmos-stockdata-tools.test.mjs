@@ -17,6 +17,9 @@ async function listFiles(directory, prefix = "") {
   const files = [];
 
   for (const entry of entries) {
+    if (entry.name === "__pycache__" || /\.py[cod]$/.test(entry.name)) {
+      continue;
+    }
     const relativePath = path.join(prefix, entry.name);
     if (entry.isDirectory()) {
       files.push(...await listFiles(path.join(directory, entry.name), relativePath));
