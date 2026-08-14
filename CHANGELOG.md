@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-stockdata-tools` to `0.2.3` and documented validated SuperMind research-runtime constraints: exact daily-price call shapes, compile-time input rejections, legacy pandas compatibility, and key-preserving CSV/JSON transport fallback when Parquet engines are unavailable.
 - Bumped `cosmos-stockdata-tools` to `0.2.2` for the backward-compatible implementation-reference addition.
 - Routed `stockdata-fetch` through the relevant read-only architecture and SuperMind implementation references before creating or changing workspace business code, without restoring any fixed extractor or data contract.
 - Corrected `stockdata-fetch` version `0.2.1` to retain immutable SuperMind execution infrastructure while keeping all evolving business scripts outside the replaceable plugin cache.
@@ -31,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Clarified that reusable stock-data business entry points must not stop the shared SuperMind Jupyter server; the runtime cleans up only the exact kernel it creates.
+- Made the runtime's business-argument and remote-file-retention boundaries explicit so workspace orchestration does not mistake source submission or download for parameter passing or remote cleanup.
 - Validate ZSXQ topic membership after strictly parsing explicit timestamp offsets and converting the represented instant to Beijing time instead of comparing the timestamp's textual date prefix.
 
 ### Removed

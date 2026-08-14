@@ -97,6 +97,25 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
   assert.match(supermindReference, /returned_symbols_by_field[\s\S]*reindex/);
   assert.match(supermindReference, /batch|chunk|分批/i);
   assert.match(supermindReference, /unsupported[\s\S]*operational|不支持[\s\S]*运行故障/i);
+  assert.match(supermindReference, /single[- ]symbol[\s\S]*is_panel=False[\s\S]*DataFrame/i);
+  assert.match(supermindReference, /frequency[\s\S]*(?:reject|not accepted|不接受)[\s\S]*fre_step/i);
+  assert.match(supermindReference, /import inspect/i);
+  assert.match(supermindReference, /getattr/i);
+  assert.match(supermindReference, /import pathlib/i);
+  assert.match(supermindReference, /import os/i);
+  assert.match(supermindReference, /built-in [`']?open/i);
+  assert.match(supermindReference, /isnull\(\)[\s\S]*isna\(\)/i);
+  assert.match(supermindReference, /pyarrow[\s\S]*fastparquet[\s\S]*(?:CSV|JSON)/i);
+  assert.match(supermindReference, /to_csv[\s\S]*to_json/i);
+  const transportSection = supermindReference.match(
+    /## Remote transport files\n([\s\S]*?)(?=\n## )/,
+  )?.[1];
+  assert.ok(transportSection);
+  assert.match(transportSection, /reset_index\(\)[\s\S]*to_csv[\s\S]*to_json/i);
+  assert.match(transportSection, /download[\s\S]*(?:does not|cannot)[\s\S]*delete[\s\S]*remote/i);
+  assert.match(skill, /exec-file[\s\S]*(?:does not|cannot)[\s\S]*(?:business arguments|argv)/i);
+  assert.match(skill, /never (?:concatenate|interpolate)[\s\S]*raw input[\s\S]*source/i);
+  assert.match(skill, /business entry point[\s\S]*(?:never|must not)[\s\S]*stop-server/i);
 
   const references = `${architectureReference}\n${supermindReference}`;
   assert.doesNotMatch(references, /supermind_full_|extract_daily|run_extract|validate_workbook/i);
@@ -113,7 +132,7 @@ test("stockdata plugin metadata describes incremental source extension", async (
   const readme = await read("README.md");
   const changelog = await read("CHANGELOG.md");
 
-  assert.match(manifest.version, /^0\.2\.2(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^0\.2\.3(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   assert.match(manifest.interface.longDescription, /SuperMind[\s\S]*baostock[\s\S]*AKShare/i);
   assert.match(manifest.interface.longDescription, /request|requirement|需求/i);
   assert.match(manifest.interface.longDescription, /external|durable|workspace/i);

@@ -13,6 +13,7 @@ account has the same permissions or that a provider interface never changes.
 ## Contents
 
 - [Research-environment constraints](#research-environment-constraints)
+- [Remote transport files](#remote-transport-files)
 - [Trading dates and Beijing time](#trading-dates-and-beijing-time)
 - [Security universes and metadata](#security-universes-and-metadata)
 - [One-day price shape](#one-day-price-shape)
@@ -32,12 +33,59 @@ import pandas as pd
 ```
 
 Keep probes minimal. Previously observed compile-time review rejections include
-`import sys`, `DataFrame.eval`, and `DataFrame.query`. Prefer ordinary boolean
-indexing and direct column access. Do not retry identical code after an
+`import sys`, `import inspect`, `getattr`, `import pathlib`, `import os`, the
+built-in `open`, `DataFrame.eval`, and `DataFrame.query`. Prefer ordinary
+boolean indexing and direct column access. Do not retry identical code after an
 `InputRejected` response; rewrite the rejected construct.
+
+Compatibility can also lag local environments. In one observed runtime,
+`DataFrame.isnull()` worked while `DataFrame.isna()` did not. Prefer the
+older-compatible spelling unless a capability probe establishes otherwise.
 
 The local `supermind_runtime.py` is transport only. Put all imports and provider
 calls needed by the accepted data contract in the workspace business script.
+
+The Jupyter server is shared account state, not a resource owned by one
+extraction. Business entry points must not call `stop-server`; the generic
+runtime already deletes the exact kernel it creates. Treat `status`,
+`start-server`, and `stop-server` as explicit operator actions. A status
+observation alone does not establish server ownership.
+
+## Remote transport files
+
+Do not assume that the remote research environment can write the user's final
+durable format. In one observed runtime, neither `pyarrow` nor `fastparquet` was
+available. Probe the required writer when the output contract depends on it.
+
+When a Parquet engine is unavailable, use a neutral CSV or JSON transport file
+through pandas, download it with the generic runtime, then normalize, validate,
+and convert it to the final durable format in the user's selected local
+environment. Preserve every business key before serialization. When a provider
+returns a date or identifier in the index, give every index level an explicit
+contract name and convert it to columns before writing. The observed compatible
+writers were `DataFrame.to_csv(...)` and `DataFrame.to_json(...)`:
+
+```python
+if any(name is None for name in frame.index.names):
+    raise ValueError("name every business-key index before transport")
+transport = frame.reset_index()
+transport.to_csv(remote_csv_path, index=False)
+transport.to_json(remote_json_path, orient="records", force_ascii=False)
+```
+
+Pandas path writers also avoid relying on direct file APIs that remote input
+review may reject. Transport files are temporary implementation details:
+validate downloaded content and preserved keys before atomic delivery, keep
+credentials out of them, and do not expose them as the durable business
+contract. Drop an index only when the accepted contract establishes that it
+carries no business key.
+
+The runtime `download` command does not delete remote transport files. Do not
+represent a successful download as remote cleanup. Keep transport content to
+the minimum accepted result, choose a collision-resistant remote path in the
+local workspace orchestration, and record the retention limitation. If remote
+retention violates the accepted privacy contract, stop before execution and
+implement a separately verified cleanup capability first.
 
 ## Trading dates and Beijing time
 
@@ -93,6 +141,9 @@ exact attributes needed by the contract because availability may differ across
 asset types.
 
 ## One-day price shape
+
+The JoinQuant-style `frequency` keyword was rejected by the observed SuperMind
+signature; use the provider's `fre_step` parameter instead.
 
 For the observed daily interface, `get_price(..., is_panel=True)` returns a
 field-addressable panel. Each requested field yields a date-by-symbol table. A
@@ -166,6 +217,30 @@ date range uses `bar_count=0`, while `is_panel=True` selects the observed return
 shape used by this pattern. If a new requirement changes frequency, date range,
 count mode, or panel behavior, probe that exact signature and record the
 semantics instead of guessing from the example.
+
+For a single-symbol request, pass the symbol directly and use `is_panel=False`.
+The observed response was a `DataFrame`, so validate that shape instead of
+assuming a panel or scalar:
+
+```python
+def load_one_day_frame(symbol, target_date, fields, skip_paused, adjustment):
+    frame = get_price(
+        securities=symbol,
+        start_date=target_date,
+        end_date=target_date,
+        fre_step="1d",
+        fields=fields,
+        skip_paused=skip_paused,
+        fq=adjustment,
+        bar_count=0,
+        is_panel=False,
+    )
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("expected a DataFrame for a single-symbol request")
+    if len(frame.index) != 1:
+        raise ValueError("expected one daily row, got %s" % len(frame.index))
+    return frame
+```
 
 ## Query-style datasets
 
