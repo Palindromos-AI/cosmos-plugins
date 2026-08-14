@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A generic SuperMind token/JupyterHub runtime for executing external workspace scripts, downloading remote results, redacting credentials, and cleaning up the exact kernel it creates.
+- Atomic per-user runtime binding for the external stockdata workspace, personal token-file path, and user-selected micromamba environment, without storing token contents.
 - `dingding-fetch` and `feishu-fetch` in `cosmos-sources-tools`, with read-only signed-in desktop collection, frozen Beijing-time windows, complete group-message coverage, semantic source selection, image-content extraction, and content-bound atomic Markdown publication.
 - Packaging/discovery smoke tests for both added skill trees, plus publisher behavior tests and verification of the existing marketplace connection.
 - Standalone `cosmos-stockdata-tools` plugin with a requirement-driven `stockdata-fetch` skill that cumulatively grows scripts in each user's durable external workspace through `SuperMind -> baostock -> AKShare`.
@@ -17,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Corrected `stockdata-fetch` version `0.2.1` to retain immutable SuperMind execution infrastructure while keeping all evolving business scripts outside the replaceable plugin cache.
 - Rebuilt `stockdata-fetch` around successive user data contracts, durable per-user workspaces outside replaceable plugin caches, source-specific adapters, explicit provenance, and contract-specific validation; bumped `cosmos-stockdata-tools` to `0.2.0` for the breaking workflow change.
 - Made both distributed chat skills environment-portable by resolving workspace root, localized app target, display timezone, and Node executable per run instead of embedding developer-machine settings.
 - Expanded `cosmos-sources-tools` metadata, documentation, and base version to `0.3.0` for DingTalk and Feishu group-message retrieval.
@@ -29,4 +32,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
-- Removed the stockdata full-extraction notebook, JupyterHub runner, fixed workbook validator, pinned runtime requirements, and their implementation-specific tests. The Skill now remains instruction-only; future requirements create and extend scripts in user-owned external workspaces.
+- Removed compatibility with the superseded one-line stockdata workspace binding; `runtime.json` is now the only supported per-user binding format.
+- Removed the stockdata full-extraction notebook, business-specific runner, fixed workbook validator, fixed workbook dependency, and their implementation-specific tests. Future requirements create and extend business scripts in user-owned external workspaces; only generic SuperMind transport remains bundled.

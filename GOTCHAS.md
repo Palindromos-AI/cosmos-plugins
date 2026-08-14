@@ -12,11 +12,23 @@
 - **Root cause:** The helper imports PyYAML at process startup, while the host `python3` may not provide that package.
 - **How to avoid:** Run the validator in a user-designated micromamba environment that already includes PyYAML. If none is designated, ask the user to create or select one; do not install into or silently choose another environment, and do not describe the startup failure as a manifest validation failure.
 
+## Deleting transport with the full extractor leaves workspace scripts unable to run
+
+- **Symptom:** The Skill correctly stores evolving business scripts outside the plugin, but those scripts cannot authenticate to or execute on SuperMind.
+- **Root cause:** Immutable generic execution infrastructure was mistaken for the removed fixed extraction program and deleted with it.
+- **How to avoid:** Bundle and version only generic SuperMind configuration, authentication, JupyterHub execution, download, redaction, and owned-kernel cleanup. Keep every dataset, field, date, threshold, workbook, and other mutable business contract in the external workspace.
+
+## Generic transport can still destroy or leak credentials at output and redirect boundaries
+
+- **Symptom:** A forced download replaces a user's token or binding file, or an HTTP/WebSocket redirect forwards authentication to another origin.
+- **Root cause:** Generic file and network operations were treated as harmless because they contained no business schema.
+- **How to avoid:** Unconditionally protect the configured token and runtime-metadata paths from downloads, including `--force`, and fail closed on all authenticated HTTP and WebSocket redirects.
+
 ## A fixed full extractor turns guesses into permanent data contracts
 
 - **Symptom:** The stockdata skill ships many datasets, fields, thresholds, and output sheets that a user never requested, while the next real requirement still requires redesign.
 - **Root cause:** One observed extraction workflow was generalized into a universal packaged program instead of treating user requirements as the source of scope.
-- **How to avoid:** Keep `stockdata-fetch` instruction-only. Create the first reusable scripts in the user's durable external stockdata workspace only when they ask for a concrete capability, then extend that implementation as requirements arrive, using `SuperMind -> baostock -> AKShare` at field or dataset level.
+- **How to avoid:** Keep the bundled runtime generic and create the first reusable business scripts in the user's durable external stockdata workspace only when they ask for a concrete capability. Extend that implementation as requirements arrive, using `SuperMind -> baostock -> AKShare` at field or dataset level.
 
 ## An installed Skill is not durable user storage
 
@@ -28,13 +40,13 @@
 
 - **Symptom:** A later request extends a second stockdata codebase because Codex was invoked from a different project.
 - **Root cause:** The external workspace was treated as a per-call guess rather than persistent user identity.
-- **How to avoid:** Require an explicit absolute path on first use, persist it outside the plugin through `STOCKDATA_WORKSPACE` or `~/.config/cosmos-stockdata-tools/workspace`, and verify and reuse it thereafter. Stop on conflicting bindings; require explicit migration authorization before changing the path, and preserve the old workspace.
+- **How to avoid:** Require explicit workspace, token-file path, and micromamba environment values together on first use, persist only those metadata values outside the plugin in `runtime.json`, and verify and reuse them thereafter. Do not read older binding formats. Stop on conflicting bindings; require explicit reconfiguration authorization before changing any value, and preserve the old workspace and token file.
 
 ## A publisher's source credentials are not distributable plugin state
 
 - **Symptom:** A distributed skill works only on the publisher's machine, or worse, exposes one shared SuperMind credential to every installer.
 - **Root cause:** A personal absolute path, token value, or account ID was treated as part of the plugin instead of per-user runtime configuration.
-- **How to avoid:** Resolve authentication from the user's project and source environment at implementation time; never bundle credentials, fixed credential paths, account IDs, or `/Users/<name>` paths.
+- **How to avoid:** Bind each user's explicitly chosen token-file path in local external metadata while keeping token content only in that file. Never bundle credentials, a publisher's credential path, account IDs, or `/Users/<name>` paths.
 
 ## A timestamp's written date is not necessarily its Beijing date
 

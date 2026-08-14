@@ -1,4 +1,4 @@
 interface:
   display_name: "Stockdata Fetch"
-  short_description: "在插件外的持久工作区按需求逐步扩展个人股票数据脚本"
-  default_prompt: "使用 $stockdata-fetch 在我的持久工作区中按需求逐步扩展股票数据脚本。"
+  short_description: "绑定个人运行环境并按需求扩展持久股票数据脚本"
+  default_prompt: "使用 $stockdata-fetch 配置我的工作区、SuperMind token 文件和 Python 环境，再按需求逐步扩展股票数据脚本。"

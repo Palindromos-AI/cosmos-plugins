@@ -1,7 +1,7 @@
 {
   "name": "cosmos-stockdata-tools",
-  "version": "0.2.0",
-  "description": "Incrementally grow China stock-data scripts in each user's durable external workspace.",
+  "version": "0.2.1",
+  "description": "Run and incrementally grow per-user China stock-data scripts with a generic SuperMind runtime.",
   "author": {
     "name": "Jason"
   },
@@ -10,8 +10,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Cosmos Stockdata Tools",
-    "shortDescription": "Grow durable per-user stock-data scripts safely.",
-    "longDescription": "Keeps the installed plugin instruction-only while each user accumulates reusable China stock-data scripts in a durable external workspace as requirements arrive; plugin or marketplace updates do not own that workspace. Each extension preserves existing behavior and follows the source priority SuperMind, then baostock, then AKShare, with explicit provenance and contract-specific validation.",
+    "shortDescription": "Run and grow durable per-user stock-data scripts.",
+    "longDescription": "Bundles a generic SuperMind runtime while each user accumulates reusable China stock-data business scripts in a durable external workspace as requirements arrive; plugin or marketplace updates do not own that workspace. Per-user workspace, token-file path, and micromamba environment bindings stay outside the plugin. Each extension preserves existing behavior and follows the source priority SuperMind, then baostock, then AKShare, with explicit provenance and contract-specific validation.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],

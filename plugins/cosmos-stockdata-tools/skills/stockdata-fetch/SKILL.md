@@ -5,33 +5,43 @@ description: >-
   each user's durable external workspace, choosing sources in strict priority
   order: SuperMind, then baostock, then AKShare. Use when Codex needs to add,
   change, or execute reusable A-share, index, fund, sector, financial,
-  valuation, factor, trading, or security-metadata capabilities. Keep the
-  installed skill instruction-only and accumulate only the capabilities that
-  user actually requests, without a fixed full extraction or universal schema.
+  valuation, factor, trading, or security-metadata capabilities. Use the
+  bundled generic SuperMind token/JupyterHub runtime, but accumulate business
+  scripts only in the external workspace and only as users request them,
+  without a fixed full extraction or universal schema.
 ---
 
 # Stockdata Fetch
 
-Grow one persistent stock-data implementation for each user from their successive requirements. Keep the installed skill immutable; create and evolve scripts in a durable workspace outside the plugin.
+Grow one persistent stock-data implementation for each user from their successive requirements. Keep the installed skill immutable; create and evolve business scripts in a durable workspace outside the plugin. Use the bundled generic runtime only for SuperMind authentication, JupyterHub execution, file download, and exact kernel cleanup.
 
-## Resolve the persistent workspace
+## Configure the per-user runtime
 
-Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, dependencies, configuration, credentials, or retrieved data in them.
+Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, mutable dependencies, runtime configuration, credentials, or retrieved data in them. The generic `<skill-dir>/scripts/supermind_runtime.py` and its pinned `requirements.txt` are versioned, read-only infrastructure; they are not the user's evolving extraction program.
 
-Resolve `<stockdata-workspace>` before implementation:
+On first use, collect and confirm these three values together in a single setup:
 
-1. Collect every available candidate: an absolute path explicitly supplied in the current request, `STOCKDATA_WORKSPACE` if configured, and the current user's binding file at `~/.config/cosmos-stockdata-tools/workspace`. The binding file contains one absolute workspace path and no credentials.
-2. Normalize and compare every candidate. If multiple candidates disagree, stop and show their resolved paths; do not apply priority or choose one silently.
-3. On first use, if no candidate exists, require the user to explicitly choose a durable absolute path. Never infer it from the current directory or nearby stockdata files.
-4. If the binding file does not exist, take the confirmed candidate whether it came from an explicit path, `STOCKDATA_WORKSPACE`, or the answer to the first-use question; validate it, then atomically write that same resolved path to the binding file before creating or running scripts. Creating the binding's parent directory is part of this disclosed first-use setup.
-5. If the binding file exists, require every other supplied candidate to match it before proceeding.
+1. `<stockdata-workspace>`: a user-chosen, durable absolute directory for cumulative business scripts, tests, dependencies, and data contracts.
+2. `<token-file>`: a user-chosen absolute file containing that user's own SuperMind token. Keep it outside the workspace and plugin, and require mode `600` on POSIX systems.
+3. `<env>`: the user-chosen micromamba environment name used for all Python work in this workspace.
+
+Never infer any of the three values. Never ask for or accept the token content in chat. Persist only the normalized workspace path, token-file path, and environment name in the canonical local per-user metadata file `~/.config/cosmos-stockdata-tools/runtime.json`; the token content must never appear in `runtime.json`. The configuration file is local to one user and machine and stays outside the plugin, marketplace snapshot, and stockdata workspace.
+
+After the user confirms all three values, validate that the directories and token file exist, then configure them atomically before creating or running business scripts:
+
+```bash
+micromamba run -n <env> python <skill-dir>/scripts/supermind_runtime.py configure \
+  --workspace <absolute-workspace> \
+  --token-file <absolute-token-file> \
+  --micromamba-env <env>
+```
 
 Treat the binding as identity, not as a convenience default:
 
-- Resolve symlinks where possible and verify that the bound directory exists before every change or run.
-- Reuse the recorded binding across later tasks, regardless of the current directory.
-- Change the binding only after the user explicitly authorizes rebinding or migration. Before rebinding, inspect both locations and preserve the old workspace; never merge, move, copy, or delete it implicitly.
-- Write or replace the binding atomically. The binding is local per-user state and must remain outside the plugin, marketplace snapshot, and workspace itself.
+- Read `runtime.json` at the start of every later task and verify all three bindings, regardless of the current directory.
+- Invoke Python only as `micromamba run -n <env> python ...`; the runtime rejects execution from a different active environment.
+- Change the workspace, token-file path, or environment only after the user explicitly authorizes reconfiguration. Preserve the old workspace and token file; never move, merge, copy, overwrite, or delete them implicitly. Only then rerun `configure` with `--reconfigure`; the runtime refuses a conflicting replacement without that flag.
+- If request-supplied values conflict with `runtime.json`, stop and show the paths or environment names instead of choosing silently.
 
 Reject any workspace inside the installed skill, a plugin cache, a marketplace snapshot, an OS temporary directory, or another user's project. Each user owns an independent `<stockdata-workspace>`; their extensions are not automatically shared with other installations.
 
@@ -87,17 +97,30 @@ Record enough provenance to reproduce each dataset:
 - source columns and normalization rules;
 - source-library version when it can affect behavior.
 
+## Execute SuperMind workspace scripts
+
+Keep SuperMind business logic in `<stockdata-workspace>/scripts/`. Do not copy the generic runtime into the workspace or edit the installed copy. Run a workspace script through the configured per-user token and environment:
+
+```bash
+micromamba run -n <env> python <skill-dir>/scripts/supermind_runtime.py exec-file \
+  <absolute-workspace-script> --timeout <seconds>
+```
+
+Use `status`, `start-server`, `stop-server`, and `exec` only for generic runtime operations. Use `download <remote-path> --output <absolute-durable-path>` to retrieve a file created remotely; never overwrite an existing local file unless the user explicitly authorizes `--force`. Even with `--force`, the runtime must never overwrite the token file, `runtime.json`, or its sibling binding metadata. The runtime dynamically discovers the JupyterHub account from the user's token, rejects HTTP and WebSocket redirects, redacts token values from errors and output, and always attempts to delete the exact kernel it created.
+
+The runtime is transport infrastructure, not a data contract. Never add fields, datasets, dates, workbook sheets, thresholds, or source-selection policy to it. Add those only to cumulative workspace scripts in response to accepted user requirements.
+
 ## Resolve runtime and credentials at implementation time
 
-Use the environment designated for `<stockdata-workspace>`. For Python work, require a user-designated micromamba environment and install approved packages with `micromamba run -n <env> uv pip install ...`. If no environment is designated, ask the user to create or select one. Add a workspace-local dependency declaration only when the first implementation needs it, then maintain it as scripts evolve.
+Use the environment recorded in `runtime.json`. Install every approved Python package with `micromamba run -n <env> uv pip install ...`; never use bare `pip`, `conda`, or `micromamba install`. Before first SuperMind execution, verify the pinned generic runtime dependency and, if installation is authorized and needed, use `micromamba run -n <env> uv pip install -r <skill-dir>/requirements.txt`. Add a separate workspace-local dependency declaration only when the first business implementation needs it, then maintain it as scripts evolve.
 
-Use each user's own source accounts and project-specific authentication method. Never ask the user to paste credentials into chat, and never place tokens, cookies, account IDs, machine-specific paths, or downloaded private data in this skill, source control, examples, logs, or output metadata.
+Use each user's own source accounts and project-specific authentication method. Never ask the user to paste credentials into chat. Never place tokens, cookies, account IDs, or downloaded private data in this skill, source control, examples, persistent logs, published datasets, or output metadata. `configure` and `show-config` may display the confirmed workspace path, token-file path, and environment name only to the current user for local binding verification; these commands must never read or display token content, and their output must not be published or persisted as a run log.
 
 ## Hard rules
 
 - Do not recreate or assume the removed full-extraction notebook, runner, workbook validator, fixed sheet set, or fixed coverage thresholds.
-- Keep the installed Skill instruction-only. Never write runtime state into the plugin cache or marketplace snapshot.
-- On first use, require an explicit workspace choice and persist its external binding. On later uses, reuse and verify that binding; never infer another workspace from the current directory.
+- Keep only generic, immutable SuperMind transport infrastructure in the installed Skill. Never write runtime state, tokens, business scripts, or retrieved data into the plugin cache or marketplace snapshot.
+- On first use, configure workspace, token-file path, and micromamba environment together, then persist only those three metadata values externally. On later uses, reuse and verify all three; never infer replacements from the current directory or host environment.
 - Begin each user's `<stockdata-workspace>` with no extraction script. Create its `scripts/` for the first requirement, then evolve those existing scripts for every later requirement.
 - Implement only the current requirement, but preserve all previously accepted capabilities in the cumulative skill implementation.
 - Preserve the source priority `SuperMind -> baostock -> AKShare` for every dataset or field.

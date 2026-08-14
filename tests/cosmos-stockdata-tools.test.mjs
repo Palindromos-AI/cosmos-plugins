@@ -28,12 +28,18 @@ async function listFiles(directory, prefix = "") {
   return files.sort();
 }
 
-test("stockdata-fetch keeps generated scripts in a durable external workspace", async () => {
+test("stockdata-fetch keeps business scripts external and bundles only generic runtime", async () => {
   const files = await listFiles(skillRoot);
   const skill = await readFile(path.join(skillRoot, "SKILL.md"), "utf8");
   const agent = await readFile(path.join(skillRoot, "agents", "openai.yaml"), "utf8");
 
-  assert.deepEqual(files, ["SKILL.md", path.join("agents", "openai.yaml")]);
+  assert.deepEqual(files, [
+    "SKILL.md",
+    path.join("agents", "openai.yaml"),
+    "requirements.txt",
+    path.join("scripts", "supermind_runtime.py"),
+    path.join("tests", "test_supermind_runtime.py"),
+  ]);
   assert.match(skill, /^name: stockdata-fetch$/m);
   assert.match(skill, /^description: >-$/m);
   assert.match(skill, /SuperMind[\s\S]*baostock[\s\S]*AKShare/i);
@@ -42,11 +48,18 @@ test("stockdata-fetch keeps generated scripts in a durable external workspace", 
   assert.match(skill, /<stockdata-workspace>/i);
   assert.match(skill, /first requirement[\s\S]*<stockdata-workspace>[\s\S]*scripts\//i);
   assert.match(skill, /existing[\s\S]*(workspace|scripts)[\s\S]*(extend|evolve)/i);
-  assert.match(skill, /STOCKDATA_WORKSPACE/);
-  assert.match(skill, /\.config\/cosmos-stockdata-tools\/workspace/);
-  assert.match(skill, /first use[\s\S]*explicit/i);
-  assert.match(skill, /binding file (?:does not exist|is absent)[\s\S]*(?:explicit path|STOCKDATA_WORKSPACE)[\s\S]*atomic/i);
-  assert.match(skill, /(?:migrat|rebind)[\s\S]*(?:explicit|authori)/i);
+  assert.match(skill, /runtime\.json/);
+  assert.doesNotMatch(
+    skill,
+    /cosmos-stockdata-tools\/workspace|legacy binding|migration candidate|旧版绑定|迁移候选/i,
+  );
+  assert.match(skill, /workspace[\s\S]*token file[\s\S]*micromamba environment/i);
+  assert.match(skill, /first use[\s\S]*(?:together|same setup|single setup)/i);
+  assert.match(skill, /token (?:content|value)[\s\S]*(?:never|must not)[\s\S]*(?:config|runtime\.json)/i);
+  assert.match(skill, /supermind_runtime\.py/);
+  assert.match(skill, /micromamba run -n <env>[\s\S]*python/i);
+  assert.match(skill, /uv pip install/i);
+  assert.match(skill, /reconfigur[\s\S]*(?:explicit|authori)/i);
   assert.doesNotMatch(skill, /use the current project only when/i);
   assert.match(skill, /plugin cache[\s\S]*(read-only|replaceable|disposable)/i);
   assert.match(skill, /marketplace update[\s\S]*(preserve|cannot|must not|does not)/i);
@@ -54,10 +67,7 @@ test("stockdata-fetch keeps generated scripts in a durable external workspace", 
   assert.match(skill, /(upstream|marketplace release)[\s\S]*(all users|shared)/i);
   assert.doesNotMatch(skill, /persistent capability changes only in the canonical/i);
   assert.doesNotMatch(skill, /explicitly require(?:s|d)? AKShare|明确.*AKShare/i);
-  assert.doesNotMatch(
-    skill,
-    /extract_daily|run_extract|validate_workbook|requirements\.txt|九个?工作表|nine expected sheets/i,
-  );
+  assert.doesNotMatch(skill, /extract_daily|run_extract|validate_workbook|九个?工作表|nine expected sheets/i);
   assert.match(agent, /\$stockdata-fetch\b/);
 });
 
@@ -66,15 +76,13 @@ test("stockdata plugin metadata describes incremental source extension", async (
     "plugins/cosmos-stockdata-tools/.codex-plugin/plugin.json",
   ));
 
-  assert.match(manifest.version, /^0\.2\.0(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^0\.2\.1(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   assert.match(manifest.interface.longDescription, /SuperMind[\s\S]*baostock[\s\S]*AKShare/i);
   assert.match(manifest.interface.longDescription, /request|requirement|需求/i);
   assert.match(manifest.interface.longDescription, /external|durable|workspace/i);
   assert.match(manifest.interface.longDescription, /marketplace update|plugin update/i);
-  assert.doesNotMatch(
-    JSON.stringify(manifest),
-    /bundled portable SuperMind runtime|full A-share dataset|notebook|workbook validator/i,
-  );
+  assert.match(manifest.interface.longDescription, /generic SuperMind runtime/i);
+  assert.doesNotMatch(JSON.stringify(manifest), /full A-share dataset|notebook|workbook validator/i);
 });
 
 test("marketplace keeps cosmos-stockdata-tools wired to the local plugin", async () => {
