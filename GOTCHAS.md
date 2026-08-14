@@ -1,5 +1,23 @@
 # Gotchas
 
+## SuperMind research kernels can reject ordinary local-Python patterns before execution
+
+- **Symptom:** A script that is valid locally is rejected by remote input review, fails on a newer pandas alias, or cannot write Parquet.
+- **Root cause:** The observed research runtime rejected selected imports, reflection, and direct file access; its pandas lacked `DataFrame.isna()`; and neither `pyarrow` nor `fastparquet` was installed.
+- **How to avoid:** Follow `supermind-api-patterns.md`: keep remote code explicit, use compatible pandas operations, treat the rejection list as observed rather than exhaustive, preserve index-based business keys as named columns, and use pandas CSV/JSON writers as temporary transport before local validation and conversion.
+
+## A business extractor does not own the shared SuperMind Jupyter server
+
+- **Symptom:** Cleaning up one extraction disrupts unrelated work by stopping the account-level Jupyter service.
+- **Root cause:** Server state was mistaken for a resource created and owned by the extraction.
+- **How to avoid:** Business entry points never call `stop-server`. The generic runtime deletes only the exact kernel it creates; server-control commands remain explicit operator actions.
+
+## Downloading a remote transport file is not remote cleanup
+
+- **Symptom:** Temporary result files remain in the shared research environment after a successful local delivery, or concurrent runs reuse one remote name.
+- **Root cause:** The generic runtime downloads files but has no verified remote-file deletion command, and `exec-file` passes source code without business `argv`.
+- **How to avoid:** Have the reusable local workspace entry point validate parameters, render a minimal remote script, and choose a collision-resistant output path. Keep transport content minimal, disclose the retention boundary, and stop before extraction when the privacy contract requires verified remote deletion.
+
 ## Distributed skills cannot inherit the developer's runtime bindings
 
 - **Symptom:** An installed skill works on the packaging machine but cannot locate another user's app, output directory, display timezone, or runtime.

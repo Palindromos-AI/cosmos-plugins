@@ -1,5 +1,11 @@
 # Decisions
 
+## 2026-08-13 — Encode validated SuperMind runtime constraints without adding a business contract
+
+- **Clarification:** The stock-data skill may record validated API shapes and research-runtime constraints, but it must not hardcode an index, field set, output layout, or trading-day policy from one extraction.
+- **Context:** The first real index extraction exposed constraints that the generic guidance did not cover: single-symbol `get_price` return shape, compile-time input rejection, legacy pandas behavior, absent Parquet engines, and shared-server ownership.
+- **Decision:** Record these as observed compatibility guidance, not universal guarantees. Use pandas CSV/JSON writers only as temporary remote transport when the requested final writer is unavailable, preserve index-based keys, then validate and convert locally. Acknowledge that runtime download does not delete remote files and `exec-file` does not pass business arguments; local workspace orchestration owns validated parameter rendering and must stop when unverified remote retention violates the privacy contract. Reusable business entry points never stop the shared Jupyter server; the runtime cleans up only its exact kernel. Release the backward-compatible guidance update as `cosmos-stockdata-tools` `0.2.3`.
+
 ## 2026-08-13 — Package contract-neutral stockdata implementation references
 
 - **Clarification:** `stockdata-fetch` may preserve architecture and source-call knowledge proven by an earlier implementation, but must not restore that implementation's fixed market scope, datasets, fields, workbook sheets, thresholds, runner lifecycle, or executable extraction program.

@@ -114,7 +114,11 @@ micromamba run -n <env> python <skill-dir>/scripts/supermind_runtime.py exec-fil
   <absolute-workspace-script> --timeout <seconds>
 ```
 
+`exec-file` sends the workspace script source but does not pass business arguments or `argv`. Keep a reusable local workspace entry point responsible for validating contract parameters and rendering the smallest remote business script with those values. Allow-list and type-check values, use safe deterministic literal serialization, and never concatenate raw input into executable source. Do not make the generic runtime aware of symbols, fields, dates, output schemas, or other business parameters.
+
 Use `status`, `start-server`, `stop-server`, and `exec` only for generic runtime operations. Use `download <remote-path> --output <absolute-durable-path>` to retrieve a file created remotely; never overwrite an existing local file unless the user explicitly authorizes `--force`. Even with `--force`, the runtime must never overwrite the token file, `runtime.json`, or its sibling binding metadata. The runtime dynamically discovers the JupyterHub account from the user's token, rejects HTTP and WebSocket redirects, redacts token values from errors and output, and always attempts to delete the exact kernel it created.
+
+Business entry points must never call `stop-server`; the Jupyter server is shared account state, while the generic runtime already deletes the exact kernel it creates. Reserve server-control commands for explicit operator requests.
 
 The runtime is transport infrastructure, not a data contract. Never add fields, datasets, dates, workbook sheets, thresholds, or source-selection policy to it. Add those only to cumulative workspace scripts in response to accepted user requirements.
 
