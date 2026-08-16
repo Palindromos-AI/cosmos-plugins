@@ -47,7 +47,7 @@ Every screenshot, downloaded binary, rendered PDF page, JSON input, or other rep
 
 Use `scripts/zsxq-browser-collector.mjs` from the persistent authenticated
 browser-control session before `record-coverage` and `record-inventory`.
-`collectZsxqTimelineRangeWithRepairGate` returns runner-ready `coverage` and
+`collectZsxqTimelineRangeWithAutoRepair` returns runner-ready `coverage` and
 `inventory` plus separate `browser_assets` used for exact image capture. It
 atomically checkpoints the loaded timeline inside the run workspace. Do not add
 `browser_assets` to the runner inventory JSON.
@@ -63,7 +63,7 @@ counted `img`, an empty gallery is a transient loading state, and a leaf element
 whose text matches a `+N` overflow badge fails closed instead of silently
 undercounting `image_count`. v3 also applies both the file-card and the
 image-gallery contracts to Knowledge Planet detail pages:
-`collectZsxqDetailWithRepairGate` returns `files` (each with `type: "pdf"`,
+`collectZsxqDetailWithAutoRepair` returns `files` (each with `type: "pdf"`,
 `file_ordinal`, `dom_ordinal`, `filename`, and `platform_id` when exposed)
 beside `images` (each with `image_ordinal` and `dom_ordinal`), so a linked
 topic's PDF file cards must enter its `record-web-inventory` children in
@@ -102,12 +102,15 @@ If the visible top date is equal to or older than the target, the collector
 returns `needs-top-confirmation`; load every pending new-content batch through
 the official UI and rerun with `topBoundaryConfirmed: true`. A visible top newer
 than the target is already a safe upper bound. If the collector returns
-`awaiting-user-approval`, do not run another collector or runner mutation. Notify
-the user using the returned message and wait for the explicit reply “修复” before
-following `browser-repair-playbook.md`. The diagnostic handoff contains no source
-content or signed URL parameters and is never copied into the final report. The
-same gate covers internal runtime reference failures; invalid input, permission,
-authentication, and browser-connection errors remain direct actionable errors.
+`automatic-repair-required`, notify the user with the returned non-blocking
+progress message, retain the workspace, and immediately follow
+`browser-repair-playbook.md`. Repair and validate the adapter or collector, then
+resume from the retained browser and runner checkpoints without asking for repair
+approval. The diagnostic handoff contains no source content or signed URL
+parameters and is never copied into the final report. The same automatic repair
+path covers internal runtime reference failures; invalid input, permission,
+authentication, browser-connection, and external-service errors remain direct
+actionable errors.
 
 ## 2. Coverage record
 

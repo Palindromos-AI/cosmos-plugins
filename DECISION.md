@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-16 — Automatically repair resumable ZSXQ collector defects
+
+- **Clarification:** A reproducible ZSXQ browser-contract or collector-internal runtime defect no longer waits for the user to reply “修复”. Authentication, browser disconnection, permission, invalid input, and external-service failures remain direct blockers rather than repair targets.
+- **Context:** The collector already produces a content-redacted diagnostic handoff, retains browser and runner checkpoints, requires evidence-driven adapter changes, and validates repairs before resuming. The approval pause added latency without adding a distinct safety boundary for this narrow in-scope repair.
+- **Decision:** Return `automatic-repair-required`, notify the user with a non-blocking progress update, follow the repair playbook immediately, validate the smallest evidence-backed change, and resume from retained checkpoints. This does not authorize commits, merges, pushes, publishing, dependency installation, access-control bypass, scope expansion, or unrelated changes.
+- **Context:** Existing fail-closed completeness checks, immutable adapter versioning, diagnostic redaction, and separate version-control authorization remain unchanged.
+
 ## 2026-08-15 — Use the official ZSXQ member download before declaring a PDF inaccessible
 
 - **Clarification:** A protected Knowledge Planet PDF may block inline reading while still exposing an official `下载文件` control to signed-in members.

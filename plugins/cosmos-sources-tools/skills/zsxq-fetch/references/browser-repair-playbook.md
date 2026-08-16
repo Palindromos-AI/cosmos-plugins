@@ -1,30 +1,29 @@
-# ZSXQ browser adapter repair playbook
+# ZSXQ browser automatic repair playbook
 
-Read this file only after `scripts/zsxq-browser-collector.mjs` returns
-`awaiting-user-approval` and the user explicitly replies **“修复”**.
+Read this file immediately after `scripts/zsxq-browser-collector.mjs` returns
+`automatic-repair-required`. Retain the marked run workspace and collector
+checkpoint, show the returned notification as a non-blocking progress update,
+then diagnose, repair, validate, and resume without asking for repair approval.
 
-## Approval boundary
+## Automatic repair boundary
 
-Before that reply, the executing agent may only:
-
-- retain the marked run workspace and its collector checkpoint;
-- read the sanitized `browser-repair-handoff.json`;
-- tell the user that collection paused, no final report was created or replaced,
-  and ask whether to repair.
-
-It must not edit selectors or collector code, broaden a selector, run a repair
-attempt, commit, merge, or resume collection. Silence, “继续”, and an unrelated
-new request are not repair approval.
+Automatic repair authorizes only the smallest evidence-backed change needed to
+restore the browser adapter or collector for the active run. It does not authorize
+committing, merging, pushing, publishing, installing dependencies, bypassing
+access controls, changing unrelated files, or expanding the collection scope.
+Obtain any separately required authorization for those actions.
 
 The diagnostic package intentionally contains only the contract version, phase,
 query-free page path, selector counts, application tag counts, and a shallow
 tag/class outline. Never add topic text, author names, signed URLs, query strings,
 fragments, cookies, storage values, headers, or screenshots to it.
 
-## Evidence-driven repair after approval
+## Evidence-driven repair
 
 1. Preserve the failed diagnostic and reproduce the failure against the same
-   page and scope. Do not diagnose from timestamps or assumptions.
+   page and scope. Do not diagnose from timestamps or assumptions. Before editing,
+   preserve every candidate file's original path, SHA-256, and content separately
+   from pre-existing user changes.
 2. List competing explanations, including delayed mounting, redirected context,
    authentication/access state, virtualized pagination, runtime-capability
    mismatch, and actual DOM drift. Record the observation that rules each one
@@ -41,13 +40,21 @@ fragments, cookies, storage values, headers, or screenshots to it.
    authenticated smoke test. The smoke test must prove the lower boundary for a
    past target date through an older topic or the exact absolute timeline end,
    and must not write a final report.
-7. Resume from `browser-collector-checkpoint.json` and the runner's `status`
+7. If any required validation fails, restore only files whose current SHA-256
+   still matches the automatic repair's output; never overwrite a concurrent edit.
+   Report every file that cannot be restored safely and leave the run resumable.
+8. Resume automatically from `browser-collector-checkpoint.json` and the runner's `status`
    checkpoint. Re-freeze an inventory only by starting a new runner workspace;
    never hand-edit a frozen manifest.
-8. Report the reproduced cause, evidence, changed adapter version, validation,
+9. Report the reproduced cause, evidence, changed adapter version, validation,
    and resumed position. Do not commit or merge unless the user separately
    authorized version-control changes.
 
 If the failure is authentication, browser disconnection, permission, or an
 external service outage rather than an implementation defect, do not change the
-adapter. Explain the required user or service action and leave the run resumable.
+adapter or keep retrying. Explain the required user or service action and leave
+the run resumable.
+
+If the active skill source is not writable, do not claim an automatic repair.
+Report the exact path or permission blocker and leave the diagnostic workspace
+and checkpoints intact.

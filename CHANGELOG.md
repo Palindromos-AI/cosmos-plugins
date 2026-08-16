@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Changed `zsxq-fetch` browser-contract and collector-runtime failures from a user-approval repair gate to automatic evidence-driven diagnosis, repair, validation, and checkpoint resume; commit, merge, push, dependency installation, access-control bypass, and unrelated changes still require their own authorization.
 - Bumped `cosmos-stockdata-tools` to `0.2.3` and documented validated SuperMind research-runtime constraints: exact daily-price call shapes, compile-time input rejections, legacy pandas compatibility, and key-preserving CSV/JSON transport fallback when Parquet engines are unavailable.
 - Bumped `cosmos-stockdata-tools` to `0.2.2` for the backward-compatible implementation-reference addition.
 - Routed `stockdata-fetch` through the relevant read-only architecture and SuperMind implementation references before creating or changing workspace business code, without restoring any fixed extractor or data contract.

@@ -105,6 +105,27 @@ test("plugin discovery metadata describes all four packaged source skills", asyn
   assert.ok(manifest.interface.defaultPrompt.length <= 3);
 });
 
+test("zsxq-fetch repairs browser collector defects automatically", async () => {
+  const skill = await read(
+    "plugins/cosmos-sources-tools/skills/zsxq-fetch/SKILL.md",
+  );
+  const playbook = await read(
+    "plugins/cosmos-sources-tools/skills/zsxq-fetch/references/browser-repair-playbook.md",
+  );
+  const runnerContract = await read(
+    "plugins/cosmos-sources-tools/skills/zsxq-fetch/references/runner-contract.md",
+  );
+  const combined = `${skill}\n${playbook}\n${runnerContract}`;
+
+  assert.match(skill, /automatic-repair-required/);
+  assert.match(playbook, /automatic repair/i);
+  assert.match(runnerContract, /automatic-repair-required/);
+  assert.doesNotMatch(
+    combined,
+    /awaiting-user-approval|explicit(?:ly)? repl(?:y|ies)|明确回复[“"]修复|receiving the explicit reply/u,
+  );
+});
+
 test("marketplace keeps cosmos-sources-tools wired to the local plugin", async () => {
   const marketplace = JSON.parse(await read(".agents/plugins/marketplace.json"));
   const entry = marketplace.plugins.find(({ name }) => name === "cosmos-sources-tools");
