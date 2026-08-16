@@ -55,8 +55,8 @@ class RuntimeTests(unittest.TestCase):
     def test_configure_persists_paths_and_environment_but_not_token(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             base = Path(root)
-            workspace = base / "workspace"
-            workspace.mkdir()
+            workspace_root = base / "cosmos-workspace"
+            workspace_root.mkdir()
             token_file = base / "credentials" / "token"
             token_file.parent.mkdir()
             token_file.write_text("private-token\n", encoding="utf-8")
@@ -64,11 +64,16 @@ class RuntimeTests(unittest.TestCase):
             config_file = base / "config" / "runtime.json"
 
             binding = runtime.configure_runtime(
-                config_file, workspace, token_file, "panda"
+                config_file, workspace_root, token_file, "panda"
             )
 
             payload = json.loads(config_file.read_text(encoding="utf-8"))
-            self.assertEqual(payload["workspace"], str(workspace.resolve()))
+            self.assertEqual(payload["schema_version"], 1)
+            self.assertEqual(payload["plugin"], "cosmos-stockdata-tools")
+            self.assertEqual(payload["workspace_root"], str(workspace_root.resolve()))
+            self.assertEqual(
+                payload["workspace"], str((workspace_root / "stockdata").resolve())
+            )
             self.assertEqual(payload["token_file"], str(token_file.resolve()))
             self.assertEqual(payload["micromamba_env"], "panda")
             self.assertNotIn("private-token", config_file.read_text(encoding="utf-8"))
@@ -84,42 +89,88 @@ class RuntimeTests(unittest.TestCase):
 
     def test_configure_rejects_token_inside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            workspace = Path(root) / "workspace"
-            workspace.mkdir()
+            workspace_root = Path(root) / "cosmos-workspace"
+            workspace = workspace_root / "stockdata"
+            workspace.mkdir(parents=True)
             token_file = workspace / "token"
             token_file.write_text("secret", encoding="utf-8")
             token_file.chmod(0o600)
             with self.assertRaisesRegex(runtime.RuntimeError, "outside the stockdata workspace"):
                 runtime.configure_runtime(
-                    Path(root) / "runtime.json", workspace, token_file, "panda"
+                    Path(root) / "runtime.json", workspace_root, token_file, "panda"
+                )
+
+    def test_configure_rejects_replaceable_plugin_cache_root(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            workspace_root = base / ".codex" / "plugins" / "cache" / "snapshot"
+            workspace_root.mkdir(parents=True)
+            token_file = base / "token"
+            token_file.write_text("secret", encoding="utf-8")
+            token_file.chmod(0o600)
+
+            with self.assertRaisesRegex(runtime.RuntimeError, "plugin, marketplace"):
+                runtime.configure_runtime(
+                    base / "runtime.json", workspace_root, token_file, "panda"
+                )
+
+    def test_configure_rejects_replaceable_plugin_directory_itself(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            workspace_root = base / ".codex" / "plugins"
+            workspace_root.mkdir(parents=True)
+            token_file = base / "token"
+            token_file.write_text("secret", encoding="utf-8")
+            token_file.chmod(0o600)
+
+            with self.assertRaisesRegex(runtime.RuntimeError, "plugin, marketplace"):
+                runtime.configure_runtime(
+                    base / "runtime.json", workspace_root, token_file, "panda"
                 )
 
     def test_configure_refuses_silent_rebinding(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             base = Path(root)
-            first_workspace = base / "workspace-a"
-            second_workspace = base / "workspace-b"
-            first_workspace.mkdir()
-            second_workspace.mkdir()
+            first_root = base / "workspace-a"
+            second_root = base / "workspace-b"
+            first_root.mkdir()
+            second_root.mkdir()
             token_file = base / "token"
             token_file.write_text("secret", encoding="utf-8")
             token_file.chmod(0o600)
             config = base / "runtime.json"
-            runtime.configure_runtime(config, first_workspace, token_file, "panda")
+            first = runtime.configure_runtime(config, first_root, token_file, "panda")
+            marker = first.workspace / "user-data.txt"
+            marker.write_text("preserve me\n", encoding="utf-8")
 
             with self.assertRaisesRegex(runtime.RuntimeError, "--reconfigure"):
-                runtime.configure_runtime(config, second_workspace, token_file, "panda")
+                runtime.configure_runtime(config, second_root, token_file, "panda")
 
             binding = runtime.configure_runtime(
                 config,
-                second_workspace,
+                second_root,
                 token_file,
                 "panda",
                 allow_reconfigure=True,
             )
-            self.assertEqual(binding.workspace, second_workspace.resolve())
+            self.assertEqual(binding.workspace, (second_root / "stockdata").resolve())
+            self.assertEqual(marker.read_text(encoding="utf-8"), "preserve me\n")
 
     def test_load_binding_rejects_wrong_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            workspace_root = base / "cosmos-workspace"
+            workspace_root.mkdir()
+            token_file = base / "token"
+            token_file.write_text("secret", encoding="utf-8")
+            token_file.chmod(0o600)
+            config = base / "runtime.json"
+            runtime.configure_runtime(config, workspace_root, token_file, "panda")
+            with patch.dict(os.environ, {"CONDA_DEFAULT_ENV": "other"}, clear=False):
+                with self.assertRaisesRegex(runtime.RuntimeError, "panda"):
+                    runtime.load_binding(config, verify_environment=True)
+
+    def test_load_binding_rejects_missing_schema_without_rewriting_it(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             base = Path(root)
             workspace = base / "workspace"
@@ -128,10 +179,52 @@ class RuntimeTests(unittest.TestCase):
             token_file.write_text("secret", encoding="utf-8")
             token_file.chmod(0o600)
             config = base / "runtime.json"
-            runtime.configure_runtime(config, workspace, token_file, "panda")
-            with patch.dict(os.environ, {"CONDA_DEFAULT_ENV": "other"}, clear=False):
-                with self.assertRaisesRegex(runtime.RuntimeError, "panda"):
-                    runtime.load_binding(config, verify_environment=True)
+            original = json.dumps(
+                {
+                    "workspace": str(workspace),
+                    "token_file": str(token_file),
+                    "micromamba_env": "panda",
+                },
+                indent=2,
+            ) + "\n"
+            config.write_text(original, encoding="utf-8")
+
+            with self.assertRaisesRegex(runtime.RuntimeError, "unsupported runtime schema"):
+                runtime.load_binding(config)
+
+            self.assertEqual(config.read_text(encoding="utf-8"), original)
+
+    def test_runtime_binding_has_one_supported_layout(self) -> None:
+        self.assertEqual(
+            runtime.RuntimeBinding._fields,
+            ("workspace_root", "workspace", "token_file", "micromamba_env"),
+        )
+
+    def test_load_binding_rejects_unknown_schema_without_rewriting_it(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            config = Path(root) / "runtime.json"
+            original = '{"schema_version": 99}\n'
+            config.write_text(original, encoding="utf-8")
+
+            with self.assertRaisesRegex(runtime.RuntimeError, "unsupported runtime schema"):
+                runtime.load_binding(config)
+
+            self.assertEqual(config.read_text(encoding="utf-8"), original)
+
+    def test_load_binding_requires_integer_schema_version(self) -> None:
+        for invalid_schema in (True, 1.0):
+            with self.subTest(schema_version=invalid_schema):
+                with tempfile.TemporaryDirectory() as root:
+                    config = Path(root) / "runtime.json"
+                    original = json.dumps({"schema_version": invalid_schema}) + "\n"
+                    config.write_text(original, encoding="utf-8")
+
+                    with self.assertRaisesRegex(
+                        runtime.RuntimeError, "unsupported runtime schema"
+                    ):
+                        runtime.load_binding(config)
+
+                    self.assertEqual(config.read_text(encoding="utf-8"), original)
 
     def test_token_reads_only_configured_file(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -10,15 +10,15 @@ Read the requested Feishu groups through the existing desktop session, select re
 ## Required inputs
 
 - Require exact group names and one filter requirement. Examples of a filter requirement include “汇总 AI 相关内容” and “提取所有与本周项目风险有关的信息”.
-- Accept optional overrides for the output path, app target, and display timezone. Otherwise resolve the portable runtime bindings below.
+- Accept optional overrides for a workspace-contained output path, app target, and display timezone. Otherwise resolve the portable runtime bindings below.
 - Ask the user when a required input is missing or ambiguous. Do not guess a group from a partial name or infer the requested topic from earlier unrelated context.
 - Treat the ordered group list as the complete requested scope. Do not add similar groups, bot chats, or private chats.
 
 ## Runtime bindings
 
-Resolve these values for the current run before freezing the collection window. Keep them run-local; never write personal paths or environment settings back into the skill or report.
+Read `<plugin-dir>/references/workspace-runtime.md` completely, then run `node <plugin-dir>/scripts/workspace-runtime.mjs show-config`. Configure only after the user explicitly confirms a durable root. Resolve these values before freezing the collection window. Never write personal paths or environment settings back into the skill or report.
 
-- `<workspace-root>`: use the writable workspace or working directory supplied by the current task context. An explicit output path may be used without a workspace root. If neither resolves to a stable writable location, ask the user instead of choosing a machine directory.
+- `<sources-workspace>`: use only the configured `<cosmos-workspace-root>/sources` returned by the manager. Never infer it from the current directory. An explicit output path must remain inside `<sources-workspace>/output/feishu`. Marketplace, plugin, and Skill updates never own or alter the binding or workspace.
 - `<app-target>`: accept an optional app target supplied by the user. Otherwise discover the accessible signed-in desktop app using the environment's installed labels, including `Feishu` and `飞书`, and verify the opened application identity. Do not assume an installation path, bundle/package identifier, localized window title, screen coordinates, or persistent accessibility indexes.
 - `<display-timezone>`: use an optional user-supplied override or determine the timezone used by the app's displayed timestamps from the current app/host environment. If it cannot be proven, ask the user; never infer it from the agent's own location.
 - `<node-executable>`: resolve a Node.js executable from the active workspace runtime or executable search path and confirm that it can run the bundled publisher. Do not embed an absolute executable path. If no compatible executable is available, stop before publication and report the missing runtime.
@@ -75,7 +75,8 @@ Do not claim complete coverage unless the upper boundary, lower boundary, every 
 
 ## 5. Write the Markdown snapshot
 
-- Use the run's already frozen eight-character hexadecimal `run-id`. Default to `<workspace-root>/output/feishu/YYYY-MM-DD-HHmmss-<run-id>-feishu-digest.md`, using the Beijing run cutoff for `YYYY-MM-DD-HHmmss`. Honor an explicit output path.
+- Use the run's already frozen eight-character hexadecimal `run-id`. Default to `<sources-workspace>/output/feishu/YYYY-MM-DD-HHmmss-<run-id>-feishu-digest.md`, using the Beijing run cutoff for `YYYY-MM-DD-HHmmss`. Honor only a workspace-contained explicit output path.
+- Ensure the selected target directory exists inside `<sources-workspace>` before creating the sibling draft; never create output directories elsewhere.
 - When any requested group or selected attachment is incomplete, write the recovered report to the sibling `*.incomplete.md` path. Never replace a complete report with an incomplete report.
 - Refuse to overwrite an existing or unmarked file. Ask for a different explicit path if the resolved path already exists.
 - Write a content-only report. Keep UI actions, search terms, screenshots, accessibility indexes, local temporary paths, and verification notes out of the report.

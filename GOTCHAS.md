@@ -1,5 +1,11 @@
 # Gotchas
 
+## Updating capability code must not become a workspace migration
+
+- **Symptom:** Installing or upgrading a marketplace plugin changes a user's configured path, rewrites runtime metadata, or moves/deletes files in `sources/` or `stockdata/`.
+- **Root cause:** Replaceable plugin files were treated as the owner of external user state, or a new path/schema convention was applied automatically during update.
+- **How to avoid:** Keep one independent external `runtime.json` per plugin, require the current versioned schema, require explicit authorization for rebinding, reject missing or unsupported schemas, and never invoke configuration or workspace mutation from marketplace, plugin, or Skill installation/update flows.
+
 ## A successful repair must not reset the run's repair budget
 
 - **Symptom:** DingTalk or Feishu collection repairs one group successfully, then repeatedly repairs later failures and consumes unbounded tokens.

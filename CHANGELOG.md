@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A shared Cosmos workspace-root convention with independently configured `<root>/sources` and `<root>/stockdata` subtrees, plus a deterministic sources workspace manager, canonical output confinement, and offline binding-safety tests.
 - One-attempt automatic repair workflows for `dingding-fetch` and `feishu-fetch`, with atomic per-run repair state, evidence-driven playbooks, direct-failure boundaries, and a hard no-reset limit that prevents repeated repair loops and excess token use.
 - Contract-neutral stockdata implementation references covering the workspace processing architecture and previously validated SuperMind API, batching, completeness, delayed-data, and failure-classification patterns.
 - A generic SuperMind token/JupyterHub runtime for executing external workspace scripts, downloading remote results, redacting credentials, and cleaning up the exact kernel it creates.
@@ -21,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-sources-tools` to `0.4.0`; all four source Skills now require the plugin's durable external sources workspace and keep final reports under its `output/` namespace.
+- Bumped `cosmos-stockdata-tools` to `0.3.0`; configurations accept a shared root, derive the stockdata subtree, and require the single versioned schema without alternate layout compatibility.
+- Made marketplace, plugin, and Skill update isolation explicit: capability updates never configure, migrate, move, overwrite, or delete user settings and workspace data.
 - Changed `zsxq-fetch` browser-contract and collector-runtime failures from a user-approval repair gate to automatic evidence-driven diagnosis, repair, validation, and checkpoint resume; commit, merge, push, dependency installation, access-control bypass, and unrelated changes still require their own authorization.
 - Bumped `cosmos-stockdata-tools` to `0.2.3` and documented validated SuperMind research-runtime constraints: exact daily-price call shapes, compile-time input rejections, legacy pandas compatibility, and key-preserving CSV/JSON transport fallback when Parquet engines are unavailable.
 - Bumped `cosmos-stockdata-tools` to `0.2.2` for the backward-compatible implementation-reference addition.

@@ -32,6 +32,7 @@ import {
   validateAudit,
   verifyManifestEvidence,
 } from "./run-model.mjs";
+import { resolveOutputPath } from "../../../scripts/workspace-runtime.mjs";
 
 const RUN_MARKER = ".zsxq-fetch-run.json";
 const MANIFEST = "manifest.json";
@@ -128,7 +129,7 @@ async function writeJsonExclusive(path, value) {
   });
 }
 
-export async function createRun(workspacePath, config) {
+export async function createRun(workspacePath, config, { runtimeOptions } = {}) {
   const requestedWorkspace = resolve(workspacePath);
   const requestedOutput = resolve(requiredString(config.output_path, "output_path"));
   if (extname(requestedOutput).toLowerCase() !== ".md") {
@@ -137,7 +138,8 @@ export async function createRun(workspacePath, config) {
   await createWorkspace(requestedWorkspace);
   const workspace = await realpath(requestedWorkspace);
   try {
-    const outputPath = await canonicalOutputPath(requestedOutput);
+    const confinedOutput = await resolveOutputPath(requestedOutput, runtimeOptions, "zsxq");
+    const outputPath = await canonicalOutputPath(confinedOutput);
     if (isInside(outputPath, workspace)) {
       throw new Error("output_path must be outside the temporary run workspace");
     }

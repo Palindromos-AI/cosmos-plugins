@@ -9,12 +9,15 @@ Collect the complete current-day CLS telegraph feed, let Codex select semantical
 
 ## Required workflow
 
-### 1. Resolve the request
+### 1. Resolve the workspace and request
+
+- Read `<plugin-dir>/references/workspace-runtime.md` completely, then run `node <plugin-dir>/scripts/workspace-runtime.mjs show-config`. Configure only after the user explicitly confirms a durable root. Use the returned `<sources-workspace>` for this entire run.
+- Refuse an explicit output path outside `<sources-workspace>/output/cls`. Marketplace, plugin, and Skill updates never own or alter the binding or workspace.
 
 - Require a natural-language filter condition. Ask if it is missing.
 - Interpret “today” in `Asia/Shanghai`, regardless of the user's local timezone.
 - Prefer recall over precision: include an item when it is materially related, even without an exact keyword match. When uncertain, include it.
-- Default the output to `<current-project>/output/YYYY-MM-DD/<short-filter-name>.md` unless the user supplies a path.
+- Default the output to `<sources-workspace>/output/cls/YYYY-MM-DD/<short-filter-name>.md` unless the user supplies a workspace-contained path.
 - Replace path separators in the derived short filter name with `-`.
 - Do not schedule future runs. Execute only for the current request.
 
@@ -112,7 +115,7 @@ The renderer must be the only component that writes the final Markdown. It copie
 
 - Automatically replace an existing file only when it starts with the `cls-fetch` generated marker.
 - Refuse an existing unmarked file unless the user explicitly authorizes `--force`.
-- Keep the fixed default path `<current-project>/output/YYYY-MM-DD/<short-filter-name>.md` for same-day refreshes.
+- Keep the fixed default path `<sources-workspace>/output/cls/YYYY-MM-DD/<short-filter-name>.md` for same-day refreshes.
 - Preserve newest-first ordering.
 - Keep the generated statistics, original timestamp, exact title/text, and `https://www.cls.cn/detail/<id>` link.
 

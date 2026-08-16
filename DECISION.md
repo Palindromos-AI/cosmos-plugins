@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-16 — Standardize durable plugin workspaces without giving updates ownership
+
+- **Clarification:** `cosmos-sources-tools` and `cosmos-stockdata-tools` both require durable user workspaces, but retain separate configuration files and isolated data subtrees.
+- **Context:** Source reports previously followed the current task directory while stockdata used an independently chosen workspace. Distributed installations need one predictable path convention without allowing a marketplace or plugin replacement to treat user data as packaged state.
+- **Decision:** Each user explicitly chooses one durable absolute `<cosmos-workspace-root>`. Derive `sources/` and `stockdata/` beneath it; store independent bindings in `~/.config/cosmos-sources-tools/runtime.json` and `~/.config/cosmos-stockdata-tools/runtime.json`. Never infer the root from the current directory or another plugin. Rebinding requires explicit authorization and never moves or deletes the old workspace. Both plugins accept only their current versioned configuration schema; missing or unsupported schemas stop without being read as another layout.
+- **Context:** Marketplace, plugin, and Skill installation or update owns only replaceable capability code. It must never invoke configuration or create, migrate, move, overwrite, or delete external settings, credentials, or workspace content. Source-run evidence remains temporary rather than becoming durable workspace data. This supersedes only the earlier stockdata workspace-path selection rule; its credential, environment, source-priority, and business-scope decisions remain active.
+
 ## 2026-08-16 — Limit chat-source automatic repair to one attempt per run
 
 - **Clarification:** `dingding-fetch` and `feishu-fetch` may automatically repair a reproducible desktop UI-contract or local implementation defect, but the repair budget covers the entire frozen run rather than each group, thread, phase, or failure.

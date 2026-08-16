@@ -2,7 +2,8 @@
 name: stockdata-fetch
 description: >-
   Incrementally build, test, run, and extend China stock-market data scripts in
-  each user's durable external workspace, choosing sources in strict priority
+  each user's durable external stockdata workspace under a user-chosen shared
+  Cosmos workspace root, choosing sources in strict priority
   order: SuperMind, then baostock, then AKShare. Use when Codex needs to add,
   change, or execute reusable A-share, index, fund, sector, financial,
   valuation, factor, trading, or security-metadata capabilities. Use the
@@ -29,29 +30,30 @@ Treat the plugin cache, installed skill directory, and marketplace snapshot as r
 
 On first use, collect and confirm these three values together in a single setup:
 
-1. `<stockdata-workspace>`: a user-chosen, durable absolute directory for cumulative business scripts, tests, dependencies, and data contracts.
+1. `<cosmos-workspace-root>`: a user-chosen, durable absolute root shared by the Cosmos plugin family. Derive `<stockdata-workspace>` exactly as `<cosmos-workspace-root>/stockdata`; never accept another child name or an independently chosen stockdata path.
 2. `<token-file>`: a user-chosen absolute file containing that user's own SuperMind token. Keep it outside the workspace and plugin, and require mode `600` on POSIX systems.
 3. `<env>`: the user-chosen micromamba environment name used for all Python work in this workspace.
 
-Never infer any of the three values. Never ask for or accept the token content in chat. Persist only the normalized workspace path, token-file path, and environment name in the canonical local per-user metadata file `~/.config/cosmos-stockdata-tools/runtime.json`; the token content must never appear in `runtime.json`. The configuration file is local to one user and machine and stays outside the plugin, marketplace snapshot, and stockdata workspace.
+Never infer any of the three values or read another plugin's binding as a substitute. Never ask for or accept the token content in chat. Persist only schema version, plugin identity, normalized workspace-root and derived workspace paths, token-file path, and environment name in the canonical local per-user metadata file `~/.config/cosmos-stockdata-tools/runtime.json`; the token content must never appear in `runtime.json`. Keep this plugin's configuration separate from `cosmos-sources-tools` even when both record the same root. The configuration is local to one user and machine and stays outside the plugin, marketplace snapshot, and shared workspace root.
 
-After the user confirms all three values, validate that the directories and token file exist, then configure them atomically before creating or running business scripts:
+After the user confirms all three values, validate that the root and token file exist, create only the derived `stockdata/` child when needed, then configure atomically before creating or running business scripts:
 
 ```bash
 micromamba run -n <env> python <skill-dir>/scripts/supermind_runtime.py configure \
-  --workspace <absolute-workspace> \
+  --workspace-root <absolute-cosmos-workspace-root> \
   --token-file <absolute-token-file> \
   --micromamba-env <env>
 ```
 
 Treat the binding as identity, not as a convenience default:
 
-- Read `runtime.json` at the start of every later task and verify all three bindings, regardless of the current directory.
+- Read `runtime.json` at the start of every later task and verify the root, derived workspace, token file, and environment regardless of the current directory.
 - Invoke Python only as `micromamba run -n <env> python ...`; the runtime rejects execution from a different active environment.
-- Change the workspace, token-file path, or environment only after the user explicitly authorizes reconfiguration. Preserve the old workspace and token file; never move, merge, copy, overwrite, or delete them implicitly. Only then rerun `configure` with `--reconfigure`; the runtime refuses a conflicting replacement without that flag.
+- Change the root, workspace, token-file path, or environment only after the user explicitly authorizes reconfiguration. Preserve the old workspace and token file; never move, merge, copy, overwrite, or delete them implicitly. Only then rerun `configure` with `--reconfigure`; the runtime refuses a conflicting replacement without that flag.
 - If request-supplied values conflict with `runtime.json`, stop and show the paths or environment names instead of choosing silently.
+- Require `schema_version` to equal `1`. Reject a missing, unknown, or unsupported schema and stop without using that configuration.
 
-Reject any workspace inside the installed skill, a plugin cache, a marketplace snapshot, an OS temporary directory, or another user's project. Each user owns an independent `<stockdata-workspace>`; their extensions are not automatically shared with other installations.
+Reject any workspace root inside the installed skill, a plugin cache, a marketplace snapshot, an OS temporary directory, or another user's project. Each user owns an independent `<stockdata-workspace>`; their extensions are not automatically shared with other installations.
 
 Inspect `<stockdata-workspace>` and its project instructions before planning:
 
@@ -59,7 +61,7 @@ Inspect `<stockdata-workspace>` and its project instructions before planning:
 - For every later requirement, read its existing entry points, source adapters, tests, dependencies, contracts, and project documents, then extend them without duplicating or discarding accepted capabilities.
 - Preserve existing interfaces and behavior unless the user explicitly changes them. Refactor when necessary to keep the cumulative implementation clear.
 
-Marketplace updates must preserve `<stockdata-workspace>` because the marketplace does not own or write it. If a capability should become shared by all users, handle that as a separate, explicitly authorized upstream contribution and versioned marketplace release; never treat edits to one installed cache as shared state.
+Marketplace updates must preserve the binding and workspace. Marketplace, plugin, and Skill installation or update must never invoke `configure`, rewrite `runtime.json`, or create, migrate, move, overwrite, or delete `<stockdata-workspace>` content. Updates replace capability code only; the marketplace does not own the user's settings or data. If a capability should become shared by all users, handle that as a separate, explicitly authorized upstream contribution and versioned marketplace release; never treat edits to one installed cache as shared state.
 
 ## Establish the requested contract
 
@@ -132,7 +134,9 @@ Use each user's own source accounts and project-specific authentication method. 
 
 - Do not recreate or assume the removed full-extraction notebook, runner, workbook validator, fixed sheet set, or fixed coverage thresholds.
 - Keep only generic, immutable SuperMind transport infrastructure and read-only, contract-neutral implementation references in the installed Skill. Never write runtime state, tokens, executable business scripts, fixed business contracts, or retrieved data into the plugin cache or marketplace snapshot.
-- On first use, configure workspace, token-file path, and micromamba environment together, then persist only those three metadata values externally. On later uses, reuse and verify all three; never infer replacements from the current directory or host environment.
+- On first use, configure `<cosmos-workspace-root>`, token-file path, and micromamba environment together, derive `<stockdata-workspace>` as `<cosmos-workspace-root>/stockdata`, then persist only the binding metadata externally. On later uses, reuse and verify the complete binding; never infer replacements from the current directory or host environment.
+- Never let marketplace, plugin, or Skill installation or update invoke configuration or alter user-owned runtime metadata, workspace files, credentials, or data.
+- Accept only `runtime.json` with `schema_version` equal to `1`; reject missing, unknown, or unsupported schemas.
 - Begin each user's `<stockdata-workspace>` with no extraction script. Create its `scripts/` for the first requirement, then evolve those existing scripts for every later requirement.
 - Implement only the current requirement, but preserve all previously accepted capabilities in the cumulative skill implementation.
 - Preserve the source priority `SuperMind -> baostock -> AKShare` for every dataset or field.
