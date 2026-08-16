@@ -38,7 +38,8 @@ fragments, cookies, storage values, headers, or screenshots to it.
    dedicated body only, exact author/time association, non-pinned chronology,
    attachment order, image load state, and diagnostic redaction.
 6. Run the focused tests, full tests, lint, build, skill validation, and a live
-   authenticated smoke test. The smoke test must cross below a past target date
+   authenticated smoke test. The smoke test must prove the lower boundary for a
+   past target date through an older topic or the exact absolute timeline end,
    and must not write a final report.
 7. Resume from `browser-collector-checkpoint.json` and the runner's `status`
    checkpoint. Re-freeze an inventory only by starting a new runner workspace;

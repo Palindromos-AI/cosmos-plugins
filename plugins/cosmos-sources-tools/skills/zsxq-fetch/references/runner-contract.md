@@ -52,7 +52,7 @@ browser-control session before `record-coverage` and `record-inventory`.
 atomically checkpoints the loaded timeline inside the run workspace. Do not add
 `browser_assets` to the runner inventory JSON.
 
-The active `zsxq-web-angular-v3` adapter preserves the immutable v1 and v2
+The active `zsxq-web-angular-v5` adapter preserves the immutable v1 through v4
 contracts for rollback. v2 added exact `app-file-gallery` PDF-card inventory: it
 orders those cards together with images and links by their topic-local DOM
 position, and a file card is accepted only when it has one direct PDF icon and
@@ -68,6 +68,23 @@ image-gallery contracts to Knowledge Planet detail pages:
 beside `images` (each with `image_ordinal` and `dom_ordinal`), so a linked
 topic's PDF file cards must enter its `record-web-inventory` children in
 `dom_ordinal` order rather than being silently omitted.
+
+v4 requires one direct `.readed-count` child under each `.info > .date` and
+reads only the date container's owned text node, preventing visible read-count
+metadata from contaminating the strict timestamp payload. It also recognizes
+one exact direct `.no-more` element with text `没有更多了` as an absolute
+timeline-end boundary. An older topic or this exact finite-stream end is
+required; absent, duplicate, nested, or text-mismatched end markers are not
+coverage evidence.
+
+v5 adds the official member-download path for inventoried timeline PDFs. It
+opens the exact topic-local file card, verifies one matching filename in
+`app-file-preview`, requires one visible exact `下载文件` control, arms the
+browser's download event before clicking, and returns that completed download
+to the caller for copying into the private run workspace. A protected inline
+viewer is not evidence that downloading is blocked. The caller must resolve the
+event's exact artifact instead of guessing a browser filename, and must not use
+undocumented private endpoints.
 
 Collector checkpoints use schema version 2: stored topics keep only query-free
 transport URLs, and every checkpoint prefix comparison strips URL queries and
@@ -107,7 +124,7 @@ Record timeline coverage only from visible browser evidence:
 }
 ```
 
-If any boolean is false, add a single-line `failure_reason`. Finalization then stops without writing either a canonical or incomplete report. A verified zero-topic day uses all five `true` values and no topic records.
+`crossed_below_target_date` records that the lower boundary is proven: either an older topic was observed or the exact absolute timeline-end marker proved that no older topic exists. If any boolean is false, add a single-line `failure_reason`. Finalization then stops without writing either a canonical or incomplete report. A verified zero-topic day uses all five `true` values and no topic records.
 
 ## 3. Topic record
 

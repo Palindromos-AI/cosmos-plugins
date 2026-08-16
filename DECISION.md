@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-08-15 — Use the official ZSXQ member download before declaring a PDF inaccessible
+
+- **Clarification:** A protected Knowledge Planet PDF may block inline reading while still exposing an official `下载文件` control to signed-in members.
+- **Context:** The live 健康星球 file preview displayed the protection notice and a download button; clicking it emitted a browser download event and produced the complete 763,849-byte PDF. The earlier App-only conclusion was therefore false.
+- **Decision:** Add immutable adapter `zsxq-web-angular-v5`. Match the exact inventoried topic-local file card and preview filename, require one visible exact download control, capture the official browser download event, and extract the copied local PDF. Declare an access failure only when no official download and no other complete representation exists; never substitute private API reverse engineering.
+- **Context:** This preserves source association and platform access controls while distinguishing viewing restrictions from an allowed member download.
+
+## 2026-08-15 — Bind ZSXQ timestamps and lower boundaries to owned UI evidence
+
+- **Clarification:** ZSXQ timestamp extraction must exclude metadata nested inside the date container, and a planet's exact absolute-end marker may prove that no older topics exist when the target date contains the entire finite timeline.
+- **Context:** The live Angular UI nested `阅读人数 N` under `.info > .date`, causing strict timestamp parsing to reject visually valid dates. The same newly created planet contained only target-day topics and exposed one direct `.no-more` marker, so requiring an older topic could never complete despite stronger end-of-stream evidence.
+- **Decision:** Add immutable adapter `zsxq-web-angular-v4`. Require one direct `.readed-count` child and parse only the date container's owned text node. Accept either an older topic or one exact direct `没有更多了` marker as the lower-bound proof; include the marker in stabilization and preserve v1-v3 unchanged for rollback.
+- **Context:** This narrows extraction to explicit UI ownership and strengthens rather than weakens completeness: ambiguous, absent, duplicated, or text-mismatched end markers remain non-proof.
+
 ## 2026-08-13 — Encode validated SuperMind runtime constraints without adding a business contract
 
 - **Clarification:** The stock-data skill may record validated API shapes and research-runtime constraints, but it must not hardcode an index, field set, output layout, or trading-day policy from one extraction.

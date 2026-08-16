@@ -1,0 +1,34 @@
+{
+  "planet_name": "Health Fixture",
+  "end_reached": true,
+  "topics": [
+    {
+      "author": "Pinned Author",
+      "timestamp": "2026-08-14 06:00",
+      "read_count": "阅读人数 99",
+      "body": "Pinned body must be excluded",
+      "sticky": true,
+      "attachments": []
+    },
+    {
+      "author": "Newest Author",
+      "timestamp": "2026-08-15 07:30",
+      "read_count": "阅读人数 1",
+      "body": "Dedicated newest body",
+      "sticky": false,
+      "attachments": [
+        { "type": "web", "order": 10 },
+        { "type": "image", "order": 20, "complete": true },
+        { "type": "pdf", "order": 30 }
+      ]
+    },
+    {
+      "author": "Older Author",
+      "timestamp": "2026-08-15 07:29",
+      "read_count": "阅读人数 1",
+      "body": "Dedicated older body",
+      "sticky": false,
+      "attachments": []
+    }
+  ]
+}
