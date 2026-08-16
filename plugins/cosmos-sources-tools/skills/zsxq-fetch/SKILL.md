@@ -22,12 +22,15 @@ Judge completeness by content coverage and extraction accuracy, not by source qu
 
 ## Required workflow
 
-### 1. Resolve the request
+### 1. Resolve the workspace and request
+
+- Read `<plugin-dir>/references/workspace-runtime.md` completely, then run `node <plugin-dir>/scripts/workspace-runtime.mjs show-config`. Configure only after the user explicitly confirms a durable root. Use the returned `<sources-workspace>` for the final report while keeping the private runner workspace temporary.
+- Refuse an explicit output path outside `<sources-workspace>/output/zsxq`. Marketplace, plugin, and Skill updates never own or alter the binding or durable workspace.
 
 - Require an exact planet name. Ask the user if it is missing or ambiguous.
 - Resolve the exact named planet through the user's signed-in Knowledge Planet UI and record its canonical group URL. If multiple accessible planets share the name or the name cannot be resolved uniquely, ask the user instead of guessing. Honor an explicit planet URL only as disambiguating context; never require an owner name.
 - Interpret every requested date and “today” in `Asia/Shanghai` (`UTC+08:00`), with one day running from Beijing `00:00:00` through the instant before the next Beijing midnight. Honor an explicit date; otherwise call the bundled `currentBeijingDate()` helper in `scripts/zsxq-time.mjs` to resolve the current Beijing calendar date. Treat Knowledge Planet's displayed timestamps as Beijing time and fail closed if visible platform evidence contradicts that contract. Record the resolved `YYYY-MM-DD`; never substitute the computer, browser, user-location, or publisher timezone.
-- Default the output to `<current-project>/output/YYYY-MM-DD-<planet>.md`; honor an explicit output path.
+- Default the output to `<sources-workspace>/output/zsxq/YYYY-MM-DD-<planet>.md`; honor only a workspace-contained explicit output path.
 - Replace `/`, `\`, and control characters in the planet-derived filename with `-`.
 - Include every topic published in the resolved planet on the requested date, regardless of author, and preserve each topic's exact displayed author. Exclude comments, replies, likes, and other interactions.
 - Do not schedule future runs or add a generated summary.

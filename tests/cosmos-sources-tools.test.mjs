@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { publishReport as publishDingdingReport } from "../plugins/cosmos-sources-tools/skills/dingding-fetch/scripts/publish-report.mjs";
 import { publishReport as publishFeishuReport } from "../plugins/cosmos-sources-tools/skills/feishu-fetch/scripts/publish-report.mjs";
+import { configureRuntime } from "../plugins/cosmos-sources-tools/scripts/workspace-runtime.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(repoRoot, "plugins", "cosmos-sources-tools");
@@ -15,6 +16,30 @@ const pluginRoot = path.join(repoRoot, "plugins", "cosmos-sources-tools");
 async function read(relativePath) {
   return readFile(path.join(repoRoot, relativePath), "utf8");
 }
+
+test("all source skills use the external sources workspace binding", async () => {
+  const workspaceReference = await readFile(
+    path.join(pluginRoot, "references", "workspace-runtime.md"),
+    "utf8",
+  );
+  const workspaceRuntime = await readFile(
+    path.join(pluginRoot, "scripts", "workspace-runtime.mjs"),
+    "utf8",
+  );
+
+  assert.match(workspaceReference, /~\/\.config\/cosmos-sources-tools\/runtime\.json/);
+  assert.match(workspaceReference, /<cosmos-workspace-root>\/sources/);
+  assert.match(workspaceReference, /marketplace[\s\S]*plugin[\s\S]*Skill[\s\S]*(?:must not|never)/i);
+  assert.match(workspaceRuntime, /WORKSPACE_DIRECTORY = "sources"/);
+
+  for (const skillName of ["cls-fetch", "zsxq-fetch", "dingding-fetch", "feishu-fetch"]) {
+    const skill = await readFile(path.join(pluginRoot, "skills", skillName, "SKILL.md"), "utf8");
+    assert.match(skill, /workspace-runtime\.md/);
+    assert.match(skill, /workspace-runtime\.mjs show-config/);
+    assert.match(skill, /<sources-workspace>/);
+    assert.doesNotMatch(skill, /<current-project>|<workspace-root>/);
+  }
+});
 
 test("cosmos-sources-tools packages the two group-chat fetch skills", async () => {
   for (const skillName of ["dingding-fetch", "feishu-fetch"]) {
@@ -30,7 +55,7 @@ test("cosmos-sources-tools packages the two group-chat fetch skills", async () =
     assert.match(agent, new RegExp(`\\$${skillName}\\b`));
     assert.match(reference, /Verify and fail visibly/);
     for (const binding of [
-      "<workspace-root>",
+      "<sources-workspace>",
       "<app-target>",
       "<display-timezone>",
       "<node-executable>",
@@ -67,14 +92,16 @@ test("group-chat skills use one-attempt automatic repair contracts", async () =>
   }
 });
 
-for (const { label, draftName, publishReport } of [
+for (const { label, outputName, draftName, publishReport } of [
   {
     label: "dingding-fetch",
+    outputName: "dingtalk",
     draftName: ".dingtalk-digest-test.tmp",
     publishReport: publishDingdingReport,
   },
   {
     label: "feishu-fetch",
+    outputName: "feishu",
     draftName: ".feishu-digest-test.tmp",
     publishReport: publishFeishuReport,
   },
@@ -82,32 +109,54 @@ for (const { label, draftName, publishReport } of [
   test(`${label} publishes only verified bytes without clobbering`, async (t) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), `${label}-`));
     t.after(() => rm(directory, { recursive: true, force: true }));
+    const workspaceRoot = path.join(directory, "cosmos-workspace");
+    await mkdir(workspaceRoot);
+    const runtimeOptions = {
+      configFile: path.join(directory, "config", "runtime.json"),
+      pluginRoot: path.join(directory, "installed-plugin"),
+      validation: { temporaryRoots: [] },
+    };
+    const binding = await configureRuntime({ workspaceRoot, ...runtimeOptions });
+    const outputDirectory = path.join(binding.workspace, "output", outputName);
 
-    const draftPath = path.join(directory, draftName);
-    const targetPath = path.join(directory, "report.md");
+    const draftPath = path.join(outputDirectory, draftName);
+    const targetPath = path.join(outputDirectory, "report.md");
     const bytes = Buffer.from("verified report\n");
     const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
     await writeFile(draftPath, bytes);
 
-    await publishReport({ draftPath, targetPath, expectedSha256 });
+    await publishReport({ draftPath, targetPath, expectedSha256, runtimeOptions });
     assert.deepEqual(await readFile(targetPath), bytes);
 
-    const secondDraft = path.join(directory, draftName.replace("test", "second"));
+    const secondDraft = path.join(outputDirectory, draftName.replace("test", "second"));
     await writeFile(secondDraft, bytes);
     await assert.rejects(
-      publishReport({ draftPath: secondDraft, targetPath, expectedSha256 }),
+      publishReport({ draftPath: secondDraft, targetPath, expectedSha256, runtimeOptions }),
       /target already exists/,
     );
 
-    const changedDraft = path.join(directory, draftName.replace("test", "changed"));
+    const changedDraft = path.join(outputDirectory, draftName.replace("test", "changed"));
     await writeFile(changedDraft, "changed report\n");
     await assert.rejects(
       publishReport({
         draftPath: changedDraft,
-        targetPath: path.join(directory, "changed.md"),
+        targetPath: path.join(outputDirectory, "changed.md"),
         expectedSha256,
+        runtimeOptions,
       }),
       /SHA-256 mismatch/,
+    );
+
+    const externalDraft = path.join(directory, draftName.replace("test", "external"));
+    await writeFile(externalDraft, bytes);
+    await assert.rejects(
+      publishReport({
+        draftPath: externalDraft,
+        targetPath: path.join(directory, "external.md"),
+        expectedSha256,
+        runtimeOptions,
+      }),
+      /output namespace/,
     );
   });
 }
@@ -118,7 +167,7 @@ test("plugin discovery metadata describes all four packaged source skills", asyn
   ));
   const readme = await read("README.md");
 
-  assert.match(manifest.version, /^0\.3\.0(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^0\.4\.0(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   for (const label of ["CLS", "Knowledge Planet", "DingTalk", "Feishu"]) {
     assert.match(manifest.interface.longDescription, new RegExp(label));
   }

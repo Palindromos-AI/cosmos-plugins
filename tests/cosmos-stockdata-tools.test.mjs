@@ -59,6 +59,8 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
   assert.match(skill, /当前需求|current requirement/i);
   assert.match(skill, /不.*全量|(?:no|without).*full[- ]extraction/i);
   assert.match(skill, /<stockdata-workspace>/i);
+  assert.match(skill, /<cosmos-workspace-root>/i);
+  assert.match(skill, /<cosmos-workspace-root>\/stockdata/i);
   assert.match(skill, /first requirement[\s\S]*<stockdata-workspace>[\s\S]*scripts\//i);
   assert.match(skill, /existing[\s\S]*(workspace|scripts)[\s\S]*(extend|evolve)/i);
   assert.match(skill, /runtime\.json/);
@@ -76,6 +78,9 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
   assert.doesNotMatch(skill, /use the current project only when/i);
   assert.match(skill, /plugin cache[\s\S]*(read-only|replaceable|disposable)/i);
   assert.match(skill, /marketplace update[\s\S]*(preserve|cannot|must not|does not)/i);
+  assert.doesNotMatch(skill, /legacy|pre-schema/i);
+  assert.match(skill, /schema(?:_version)?[\s\S]*(?:must|require)[\s\S]*1/i);
+  assert.match(skill, /missing|unknown|unsupported[\s\S]*(?:schema|version)[\s\S]*(?:reject|stop|fail)/i);
   assert.match(skill, /each user[\s\S]*(own|independent|isolated)/i);
   assert.match(skill, /(upstream|marketplace release)[\s\S]*(all users|shared)/i);
   assert.doesNotMatch(skill, /persistent capability changes only in the canonical/i);
@@ -135,7 +140,7 @@ test("stockdata plugin metadata describes incremental source extension", async (
   const readme = await read("README.md");
   const changelog = await read("CHANGELOG.md");
 
-  assert.match(manifest.version, /^0\.2\.3(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^0\.3\.0(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   assert.match(manifest.interface.longDescription, /SuperMind[\s\S]*baostock[\s\S]*AKShare/i);
   assert.match(manifest.interface.longDescription, /request|requirement|需求/i);
   assert.match(manifest.interface.longDescription, /external|durable|workspace/i);

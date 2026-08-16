@@ -25,6 +25,9 @@ DEFAULT_CONFIG_FILE = Path.home() / ".config" / "cosmos-stockdata-tools" / "runt
 SKILL_DIR = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = SKILL_DIR.parents[1]
 EXPECTED_WEBSOCKET_VERSION = "1.8.0"
+CONFIG_SCHEMA_VERSION = 1
+PLUGIN_NAME = "cosmos-stockdata-tools"
+WORKSPACE_DIRECTORY = "stockdata"
 
 _TOKEN_CACHE: str | None = None
 _USER_CACHE: str | None = None
@@ -57,6 +60,7 @@ _HTTP_OPENER = urllib.request.build_opener(RejectRedirects())
 
 
 class RuntimeBinding(NamedTuple):
+    workspace_root: Path
     workspace: Path
     token_file: Path
     micromamba_env: str
@@ -86,12 +90,34 @@ def is_temporary_workspace(path: Path) -> bool:
     return any(is_within(path, root) for root in temporary_roots)
 
 
+def is_replaceable_distribution_path(path: Path) -> bool:
+    normalized = path.resolve().as_posix()
+    return re.search(r"/(?:\.codex|\.agents)/plugins(?:/|$)", normalized) is not None
+
+
 def validate_binding(binding: RuntimeBinding) -> RuntimeBinding:
+    workspace_root = require_absolute(binding.workspace_root, "workspace root")
     workspace = require_absolute(binding.workspace, "workspace")
     token_file = require_absolute(binding.token_file, "token file")
     environment = binding.micromamba_env.strip()
     if not environment or not re.fullmatch(r"[A-Za-z0-9_.-]+", environment):
         raise RuntimeError("micromamba environment must be a non-empty environment name")
+    if not workspace_root.is_dir():
+        raise RuntimeError(f"workspace root directory does not exist: {workspace_root}")
+    if workspace != workspace_root / WORKSPACE_DIRECTORY:
+        raise RuntimeError(
+            f"stockdata workspace must equal {workspace_root / WORKSPACE_DIRECTORY}"
+        )
+    if is_temporary_workspace(workspace_root):
+        raise RuntimeError(
+            "workspace root must be durable and outside OS temporary directories"
+        )
+    if is_within(workspace_root, PLUGIN_DIR) or is_replaceable_distribution_path(
+        workspace_root
+    ):
+        raise RuntimeError(
+            "workspace root must be outside plugin, marketplace, and plugin-cache paths"
+        )
     if not workspace.is_dir():
         raise RuntimeError(f"workspace directory does not exist: {workspace}")
     if is_temporary_workspace(workspace):
@@ -106,19 +132,30 @@ def validate_binding(binding: RuntimeBinding) -> RuntimeBinding:
         raise RuntimeError("token file must be outside the installed plugin")
     if os.name == "posix" and token_file.stat().st_mode & 0o777 != 0o600:
         raise RuntimeError(f"token file permissions must be 600: {token_file}")
-    return RuntimeBinding(workspace, token_file, environment)
+    return RuntimeBinding(
+        workspace_root,
+        workspace,
+        token_file,
+        environment,
+    )
 
 
 def atomic_write_config(config_file: Path, binding: RuntimeBinding) -> None:
     config_file = require_absolute(config_file, "config file")
-    if is_within(config_file, PLUGIN_DIR) or is_within(config_file, binding.workspace):
-        raise RuntimeError("runtime config must be outside the plugin and stockdata workspace")
+    if (
+        is_within(config_file, PLUGIN_DIR)
+        or is_within(config_file, binding.workspace_root)
+    ):
+        raise RuntimeError("runtime config must be outside the plugin and shared workspace root")
     parent_existed = config_file.parent.exists()
     config_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if os.name == "posix" and not parent_existed:
         config_file.parent.chmod(0o700)
     temporary = config_file.with_name(f".{config_file.name}.{uuid.uuid4().hex}.tmp")
     payload = {
+        "schema_version": CONFIG_SCHEMA_VERSION,
+        "plugin": PLUGIN_NAME,
+        "workspace_root": str(binding.workspace_root),
         "workspace": str(binding.workspace),
         "token_file": str(binding.token_file),
         "micromamba_env": binding.micromamba_env,
@@ -135,13 +172,42 @@ def atomic_write_config(config_file: Path, binding: RuntimeBinding) -> None:
 
 def configure_runtime(
     config_file: Path,
-    workspace: Path,
+    workspace_root: Path,
     token_file: Path,
     micromamba_env: str,
     *,
     allow_reconfigure: bool = False,
 ) -> RuntimeBinding:
-    binding = validate_binding(RuntimeBinding(workspace, token_file, micromamba_env))
+    workspace_root = require_absolute(workspace_root, "workspace root")
+    token_file = require_absolute(token_file, "token file")
+    environment = micromamba_env.strip()
+    if not environment or not re.fullmatch(r"[A-Za-z0-9_.-]+", environment):
+        raise RuntimeError("micromamba environment must be a non-empty environment name")
+    if not workspace_root.is_dir():
+        raise RuntimeError(f"workspace root directory does not exist: {workspace_root}")
+    if is_temporary_workspace(workspace_root):
+        raise RuntimeError("workspace root must be durable and outside OS temporary directories")
+    if is_within(workspace_root, PLUGIN_DIR) or is_replaceable_distribution_path(
+        workspace_root
+    ):
+        raise RuntimeError(
+            "workspace root must be outside plugin, marketplace, and plugin-cache paths"
+        )
+    if not token_file.is_file():
+        raise RuntimeError(f"token file does not exist: {token_file}")
+    workspace = workspace_root / WORKSPACE_DIRECTORY
+    if is_within(token_file, workspace):
+        raise RuntimeError("token file must remain outside the stockdata workspace")
+    if is_within(token_file, PLUGIN_DIR):
+        raise RuntimeError("token file must be outside the installed plugin")
+    if os.name == "posix" and token_file.stat().st_mode & 0o777 != 0o600:
+        raise RuntimeError(f"token file permissions must be 600: {token_file}")
+    binding = RuntimeBinding(
+        workspace_root,
+        workspace,
+        token_file,
+        environment,
+    )
     config_file = require_absolute(config_file, "config file")
     if config_file.exists():
         try:
@@ -160,6 +226,8 @@ def configure_runtime(
                     "runtime binding already exists and differs from the requested values; "
                     "use --reconfigure only after explicit authorization"
                 )
+    workspace.mkdir(mode=0o700, exist_ok=True)
+    binding = validate_binding(binding)
     atomic_write_config(config_file, binding)
     return binding
 
@@ -176,22 +244,39 @@ def load_binding(config_file: Path, *, verify_environment: bool = False) -> Runt
         raise RuntimeError(f"cannot read runtime config {config_file}: {exc}") from exc
     if not isinstance(payload, dict):
         raise RuntimeError(f"runtime config must contain a JSON object: {config_file}")
+    schema_version = payload.get("schema_version")
+    if type(schema_version) is not int or schema_version != CONFIG_SCHEMA_VERSION:
+        actual_schema = payload.get("schema_version", "missing")
+        raise RuntimeError(
+            f"unsupported runtime schema: {actual_schema}; expected {CONFIG_SCHEMA_VERSION}"
+        )
+    if payload.get("plugin") != PLUGIN_NAME:
+        raise RuntimeError(f"runtime config plugin must equal {PLUGIN_NAME}")
     try:
+        workspace_root_value = payload["workspace_root"]
         workspace_value = payload["workspace"]
         token_file_value = payload["token_file"]
         environment_value = payload["micromamba_env"]
         if not all(
             isinstance(value, str)
-            for value in (workspace_value, token_file_value, environment_value)
+            for value in (
+                workspace_root_value,
+                workspace_value,
+                token_file_value,
+                environment_value,
+            )
         ):
             raise TypeError("all binding values must be strings")
         binding = RuntimeBinding(
+            Path(workspace_root_value),
             Path(workspace_value),
             Path(token_file_value),
             environment_value,
         )
     except (KeyError, TypeError) as exc:
-        raise RuntimeError(f"runtime config has invalid or missing binding fields: {exc}") from exc
+        raise RuntimeError(
+            f"runtime config has invalid or missing binding fields: {exc}"
+        ) from exc
     binding = validate_binding(binding)
     active = os.environ.get("CONDA_DEFAULT_ENV", "").strip()
     if verify_environment and active != binding.micromamba_env:
@@ -535,7 +620,7 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
 
     configure = commands.add_parser("configure", help="persist per-user runtime metadata")
-    configure.add_argument("--workspace", type=Path, required=True)
+    configure.add_argument("--workspace-root", type=Path, required=True)
     configure.add_argument("--token-file", type=Path, required=True)
     configure.add_argument("--micromamba-env", required=True)
     configure.add_argument("--reconfigure", action="store_true")
@@ -573,7 +658,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "configure":
             binding = configure_runtime(
                 DEFAULT_CONFIG_FILE,
-                args.workspace,
+                args.workspace_root,
                 args.token_file,
                 args.micromamba_env,
                 allow_reconfigure=args.reconfigure,

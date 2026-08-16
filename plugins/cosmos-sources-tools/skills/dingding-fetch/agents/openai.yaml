@@ -1,4 +1,4 @@
 interface:
   display_name: "Dingding Fetch"
   short_description: "按北京时间读取指定钉钉群当天消息并提取相关原文到 Markdown"
-  default_prompt: "使用 $dingding-fetch 读取指定钉钉群今天截至当前时刻的消息，筛选 AI 相关内容并生成 Markdown 原文汇总。"
+  default_prompt: "使用 $dingding-fetch 读取指定钉钉群今天截至当前时刻的消息，筛选 AI 相关内容并保存到已配置的 sources 工作区。"

@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { link, lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveOutputPath } from "../../../scripts/workspace-runtime.mjs";
 
 function requireString(value, label) {
   if (typeof value !== "string" || value.length === 0) {
@@ -41,9 +42,18 @@ async function readStableRegularFile(draft) {
   }
 }
 
-export async function publishReport({ draftPath, targetPath, expectedSha256 }) {
+export async function publishReport({
+  draftPath,
+  targetPath,
+  expectedSha256,
+  runtimeOptions,
+}) {
   const draft = requireString(draftPath, "draftPath");
-  const target = requireString(targetPath, "targetPath");
+  const target = await resolveOutputPath(
+    requireString(targetPath, "targetPath"),
+    runtimeOptions,
+    "dingtalk",
+  );
   const expected = requireSha256(expectedSha256);
   if (path.dirname(draft) !== path.dirname(target)) {
     throw new Error("draft and target must be in the same directory");
