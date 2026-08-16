@@ -1,5 +1,11 @@
 # Gotchas
 
+## Automatic repair does not broaden task authority
+
+- **Symptom:** A ZSXQ browser-contract failure is treated as permission to commit, install dependencies, bypass access controls, change unrelated files, or redesign the collector.
+- **Root cause:** Automatic authorization for the narrow repair-and-resume workflow was confused with authorization for other repository, environment, or remote-system mutations.
+- **How to avoid:** Automatically diagnose and repair only reproducible adapter or collector defects, preserve the fail-closed and checkpoint contracts, and request any separately required authorization for commits, merges, pushes, publishing, dependency installation, access-control changes, or unrelated edits.
+
 ## A protected PDF viewer can still provide an official member download
 
 - **Symptom:** A ZSXQ PDF is reported as “仅允许在 App 查看” even though its web file-detail dialog visibly offers `下载文件`.

@@ -11,7 +11,7 @@ This repository is the `cosmos-plugins` Codex marketplace. It packages reusable 
 - `plugins/cosmos-sources-tools/`: Source-retrieval plugin providing CLS telegraph filtering, authenticated Knowledge Planet archival, and read-only DingTalk and Feishu group-message extraction.
   - `.codex-plugin/plugin.json`: Plugin identity, discovery metadata, and skill path.
   - `skills/cls-fetch/`: Installable skill instructions, agent metadata, Node.js runtime scripts, and repair references.
-  - `skills/zsxq-fetch/`: Installable skill instructions, agent metadata, browser collector, shared Beijing-date policy, deterministic Node.js runner, Node test suite, image/PDF extraction resources, output templates, and repair references.
+  - `skills/zsxq-fetch/`: Installable skill instructions, agent metadata, browser collector with automatic evidence-driven repair handoff and resumable checkpoints, shared Beijing-date policy, deterministic Node.js runner, Node test suite, image/PDF extraction resources, output templates, and repair references.
   - `skills/dingding-fetch/`: Portable workspace/app/timezone/runtime bindings, DingTalk Computer Use workflow, agent metadata, image-extraction rules, and content-bound atomic report publisher.
   - `skills/feishu-fetch/`: Portable workspace/app/timezone/runtime bindings, Feishu Computer Use workflow, agent metadata, in-group thread coverage, image-extraction rules, and content-bound atomic report publisher.
 - `plugins/cosmos-stockdata-tools/`: Stock-market data operations packaged as a separate plugin.

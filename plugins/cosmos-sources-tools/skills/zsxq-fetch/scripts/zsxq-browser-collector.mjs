@@ -79,14 +79,50 @@ export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
 });
 
 export const ZSXQ_REPAIR_NOTIFICATION =
-  "知识星球采集已暂停：页面结构或加载行为与当前适配器不一致。"
-  + "我已保存不含正文、签名参数和登录信息的诊断包，且没有生成或覆盖最终报告。"
-  + "要我修复适配器、运行测试并从检查点继续吗？请明确回复“修复”。";
+  "知识星球采集检测到页面结构或加载行为与当前适配器不一致。"
+  + "我已保存不含正文、签名参数和登录信息的诊断包；"
+  + "接下来会自动诊断、修复、验证并从检查点继续，期间不会生成或覆盖最终报告。";
 
 const CHECKPOINT_FILENAME = "browser-collector-checkpoint.json";
 const REPAIR_HANDOFF_FILENAME = "browser-repair-handoff.json";
 const NAVIGATION_ERROR_PATTERN = /Inspected target navigated or closed|Execution context was destroyed.*navigation/iu;
 const DIRECT_BROWSER_ERROR_PATTERN = /permission|denied|unauthori[sz]ed|authenticat|sign.?in|log.?in|disconnect|not connected|connection (?:closed|lost|failed)|(?:browser|extension|target|tab).*(?:closed|unavailable)/iu;
+const AUTOMATIC_REPAIR_ERROR_CODES = new Set([
+  "BODY_EXTRACTOR_CROSS_CHECK_FAILED",
+  "BODY_EXTRACTOR_DOM_CONTRACT_FAILED",
+  "BODY_EXTRACTOR_TOPIC_COUNT_CHANGED",
+  "COLLECTOR_RUNTIME_REFERENCE_ERROR",
+  "CONTROL_INSIDE_BODY",
+  "CONTROL_INSIDE_DETAIL_BODY",
+  "DETAIL_EXPAND_CONTROL_CLICK_FAILED",
+  "DETAIL_EXPAND_CONTROL_MISMATCH",
+  "DETAIL_EXPANSION_NOT_STABLE",
+  "DETAIL_FILE_ATTACHMENT_MISMATCH",
+  "DETAIL_FILE_ATTACHMENT_OVERLAP",
+  "DETAIL_FILE_GALLERY_ITEM_MISMATCH",
+  "DETAIL_FIELD_MISMATCH",
+  "DETAIL_IMAGE_GALLERY_ITEM_MISMATCH",
+  "DETAIL_IMAGE_GALLERY_OVERFLOW_UNSUPPORTED",
+  "DETAIL_ROOT_MISMATCH",
+  "EXPAND_CONTROL_CLICK_FAILED",
+  "EXPAND_CONTROL_MISMATCH",
+  "EXPAND_INDEX_INVALID",
+  "FILE_ATTACHMENT_MISMATCH",
+  "FILE_ATTACHMENT_OVERLAP",
+  "FILE_GALLERY_ITEM_MISMATCH",
+  "IMAGE_GALLERY_ITEM_MISMATCH",
+  "IMAGE_GALLERY_OVERFLOW_UNSUPPORTED",
+  "TIMELINE_BODY_COUNT_DID_NOT_STABILIZE",
+  "TIMELINE_CHRONOLOGY_INCONSISTENT",
+  "TIMELINE_END_MARKER_MISMATCH",
+  "TIMELINE_EXPANSION_NOT_STABLE",
+  "TIMELINE_ROOT_MISMATCH",
+  "TIMELINE_SCROLL_CONTROL_FAILED",
+  "TIMELINE_SCROLL_CONTROL_UNAVAILABLE",
+  "TIMESTAMP_FORMAT_MISMATCH",
+  "TOPIC_CONTAINER_MISMATCH",
+  "TOPIC_FIELD_MISMATCH",
+]);
 
 export class ZsxqBrowserCollectionError extends Error {
   constructor(code, phase, message, diagnostic = {}, options = {}) {
@@ -572,7 +608,7 @@ export function advanceZsxqTimelinePage(input) {
   };
 }
 
-/** Collect content-free DOM evidence for a user-approved adapter repair. */
+/** Collect content-free DOM evidence for an automatic adapter repair. */
 export function collectZsxqDomDiagnostics(input) {
   const adapter = input && input.adapter;
   if (!adapter || typeof adapter !== "object" || !adapter.selectors) {
@@ -1948,8 +1984,8 @@ export async function writeZsxqBrowserRepairHandoff(workspace, input) {
     : {};
   const checkpointRetained = await readCheckpoint(workspace) !== undefined;
   const payload = {
-    schema_version: 1,
-    status: "awaiting-user-approval",
+    schema_version: 2,
+    status: "automatic-repair-required",
     contract_version: ZSXQ_BROWSER_CONTRACT.version,
     phase: safeDiagnosticToken(
       input.phase,
@@ -1976,18 +2012,24 @@ export async function writeZsxqBrowserRepairHandoff(workspace, input) {
       retained: checkpointRetained,
       ...(checkpointRetained ? { file: CHECKPOINT_FILENAME } : {}),
     },
-    repair_gate: {
-      user_approval_required: true,
-      approval_phrase: "修复",
-      allowed_before_approval: [
-        "retain the run workspace",
+    repair_policy: {
+      mode: "automatic",
+      user_approval_required: false,
+      required_actions: [
         "read the sanitized diagnostic",
-        "notify the user",
+        "follow the browser repair playbook",
+        "repair and validate the adapter or collector",
+        "resume from retained checkpoints",
       ],
-      forbidden_before_approval: [
-        "edit the adapter or collector",
-        "run a repair attempt",
-        "commit repair changes",
+      forbidden_actions: [
+        "commit repair changes without separate authorization",
+        "merge repair changes without separate authorization",
+        "push repair changes without separate authorization",
+        "publish repair changes without separate authorization",
+        "install dependencies without separate authorization",
+        "bypass access controls",
+        "expand the collection scope",
+        "change unrelated files",
       ],
     },
     user_notification: ZSXQ_REPAIR_NOTIFICATION,
@@ -2011,9 +2053,6 @@ async function collectRepairDiagnostics(tab, error) {
 }
 
 function repairableCollectorError(error) {
-  if (error instanceof ZsxqBrowserCollectionError) {
-    return error;
-  }
   const isReferenceError = error instanceof ReferenceError
     || (
       error !== null
@@ -2022,6 +2061,13 @@ function repairableCollectorError(error) {
       && error.name === "ReferenceError"
     );
   if (isReferenceError) {
+    const message = thrownMessage(error);
+    const isInternalMissingReference = /\bis not defined\b|cannot access .+ before initialization|can't find variable:/iu.test(
+      message,
+    );
+    if (!isInternalMissingReference && directBrowserError(error)) {
+      return undefined;
+    }
     return new ZsxqBrowserCollectionError(
       "COLLECTOR_RUNTIME_REFERENCE_ERROR",
       "collector-runtime",
@@ -2030,10 +2076,19 @@ function repairableCollectorError(error) {
       { cause: error },
     );
   }
+  if (directBrowserError(error)) {
+    return undefined;
+  }
+  if (
+    error instanceof ZsxqBrowserCollectionError
+    && AUTOMATIC_REPAIR_ERROR_CODES.has(error.code)
+  ) {
+    return error;
+  }
   return undefined;
 }
 
-async function repairGateResult(tab, input, error, pageUrl) {
+async function automaticRepairHandoffResult(tab, input, error, pageUrl) {
   const repairError = repairableCollectorError(error);
   if (!repairError || !input?.workspace) {
     throw error;
@@ -2046,7 +2101,7 @@ async function repairGateResult(tab, input, error, pageUrl) {
     diagnostic,
   });
   return {
-    status: "awaiting-user-approval",
+    status: "automatic-repair-required",
     notification: ZSXQ_REPAIR_NOTIFICATION,
     diagnostic_path: handoff.path,
     checkpoint_retained: handoff.payload.checkpoint.retained,
@@ -2369,13 +2424,16 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
   };
 }
 
-export async function collectZsxqTimelineRangeWithRepairGate(tab, input) {
+export async function collectZsxqTimelineRangeWithAutoRepair(tab, input) {
   try {
     return await collectZsxqTimelineRangeOnTab(tab, input);
   } catch (error) {
-    return repairGateResult(tab, input, error, input?.planetUrl);
+    return automaticRepairHandoffResult(tab, input, error, input?.planetUrl);
   }
 }
+
+export const collectZsxqTimelineRangeWithRepairGate =
+  collectZsxqTimelineRangeWithAutoRepair;
 
 export async function collectZsxqDetailOnTab(tab, input) {
   assertTab(tab);
@@ -2463,10 +2521,12 @@ export async function collectZsxqDetailOnTab(tab, input) {
   };
 }
 
-export async function collectZsxqDetailWithRepairGate(tab, input) {
+export async function collectZsxqDetailWithAutoRepair(tab, input) {
   try {
     return await collectZsxqDetailOnTab(tab, input);
   } catch (error) {
-    return repairGateResult(tab, input, error, input?.url);
+    return automaticRepairHandoffResult(tab, input, error, input?.url);
   }
 }
+
+export const collectZsxqDetailWithRepairGate = collectZsxqDetailWithAutoRepair;

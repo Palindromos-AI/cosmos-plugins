@@ -1,17 +1,23 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
   collectZsxqDomDiagnostics,
+  collectZsxqDetailWithAutoRepair,
+  collectZsxqTimelineRangeWithAutoRepair,
   downloadZsxqTimelinePdfOnTab,
   inspectZsxqDetailPage,
   inspectZsxqTimelinePage,
   timelineCoverageBoundaryReached,
+  writeZsxqBrowserRepairHandoff,
   ZSXQ_BROWSER_CONTRACT,
   ZSXQ_BROWSER_CONTRACT_V3,
   ZSXQ_BROWSER_CONTRACT_V4,
+  ZSXQ_REPAIR_NOTIFICATION,
 } from "../scripts/zsxq-browser-collector.mjs";
 
 const fixture = JSON.parse(await readFile(
@@ -342,6 +348,265 @@ test("repair diagnostics retain structure but redact content and URL secrets", (
   const serialized = JSON.stringify(diagnostic);
   assert.equal(diagnostic.pageUrl, "https://wx.zsxq.com/group/fixture");
   assert.doesNotMatch(serialized, /supersecret|secret body|Newest Author|Dedicated newest body/);
+});
+
+test("repair handoff requires automatic repair without user approval", async (t) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-auto-repair-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+
+  const { payload } = await writeZsxqBrowserRepairHandoff(workspace, {
+    phase: "timeline-inventory",
+    code: "TIMELINE_DOM_CONTRACT_FAILED",
+    pageUrl: "https://wx.zsxq.com/group/fixture?token=secret#fragment",
+    diagnostic: {
+      pageUrl: "https://wx.zsxq.com/group/fixture?token=secret#fragment",
+      selectorCounts: { topic: 0 },
+    },
+  });
+
+  assert.equal(payload.schema_version, 2);
+  assert.equal(payload.status, "automatic-repair-required");
+  assert.deepEqual(payload.repair_policy, {
+    mode: "automatic",
+    user_approval_required: false,
+    required_actions: [
+      "read the sanitized diagnostic",
+      "follow the browser repair playbook",
+      "repair and validate the adapter or collector",
+      "resume from retained checkpoints",
+    ],
+    forbidden_actions: [
+      "commit repair changes without separate authorization",
+      "merge repair changes without separate authorization",
+      "push repair changes without separate authorization",
+      "publish repair changes without separate authorization",
+      "install dependencies without separate authorization",
+      "bypass access controls",
+      "expand the collection scope",
+      "change unrelated files",
+    ],
+  });
+  assert.equal(payload.user_notification, ZSXQ_REPAIR_NOTIFICATION);
+  assert.match(payload.user_notification, /自动诊断、修复、验证并从检查点继续/);
+  assert.doesNotMatch(
+    JSON.stringify(payload),
+    /awaiting-user-approval|approval_phrase|请明确回复|要我修复/u,
+  );
+});
+
+test("automatic repair routing is limited to DOM contracts and collector defects", async (t) => {
+  const workspaces = [];
+  t.after(() => Promise.all(workspaces.map(
+    (workspace) => rm(workspace, { recursive: true, force: true }),
+  )));
+  const createWorkspace = async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-repair-route-"));
+    workspaces.push(workspace);
+    return workspace;
+  };
+  const inputFor = (workspace, overrides = {}) => ({
+    planetName: "Fixture Planet",
+    planetUrl: "https://wx.zsxq.com/group/fixture",
+    targetDate: "2026-08-15",
+    filtersClearedConfirmed: true,
+    workspace,
+    timeoutMs: 0,
+    pollIntervalMs: 1,
+    ...overrides,
+  });
+  const tabFor = (evaluate, url = undefined) => ({
+    ...(url ? { url: async () => url } : {}),
+    playwright: {
+      evaluate,
+      locator: () => ({}),
+    },
+  });
+
+  await t.test("DOM contract failure returns automatic repair", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async (operation) => {
+      if (operation.name === "prepareZsxqTimelinePage") return undefined;
+      if (operation.name === "inspectZsxqTimelinePage") {
+        return {
+          ok: false,
+          failure: {
+            code: "TOPIC_FIELD_MISMATCH",
+            transient: false,
+            selectorCounts: { topic: 1 },
+          },
+        };
+      }
+      if (operation.name === "collectZsxqDomDiagnostics") {
+        return { pageUrl: "https://wx.zsxq.com/group/fixture" };
+      }
+      throw new Error(`Unexpected operation: ${operation.name}`);
+    });
+
+    const result = await collectZsxqTimelineRangeWithAutoRepair(
+      tab,
+      inputFor(workspace),
+    );
+    assert.equal(result.status, "automatic-repair-required");
+  });
+
+  await t.test("collector ReferenceError returns automatic repair", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async () => {
+      throw new ReferenceError("permissionResolver is not defined");
+    });
+
+    const result = await collectZsxqTimelineRangeWithAutoRepair(
+      tab,
+      inputFor(workspace),
+    );
+    assert.equal(result.status, "automatic-repair-required");
+  });
+
+  await t.test("invalid input remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async () => undefined);
+    await assert.rejects(
+      collectZsxqTimelineRangeWithAutoRepair(tab, inputFor(workspace, {
+        planetName: "",
+      })),
+      /planetName must be a non-empty exact name/,
+    );
+  });
+
+  await t.test("authentication failure remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(
+      async () => undefined,
+      "https://wx.zsxq.com/signin",
+    );
+    await assert.rejects(
+      collectZsxqTimelineRangeWithAutoRepair(tab, inputFor(workspace)),
+      /authentication or group access is required/,
+    );
+  });
+
+  await t.test("browser permission failure remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async () => {
+      throw new Error("Permission denied by browser control");
+    });
+    await assert.rejects(
+      collectZsxqTimelineRangeWithAutoRepair(tab, inputFor(workspace)),
+      /Permission denied by browser control/,
+    );
+  });
+
+  await t.test("browser disconnection remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async () => {
+      throw new ReferenceError("Browser disconnected from the control session");
+    });
+    await assert.rejects(
+      collectZsxqTimelineRangeWithAutoRepair(tab, inputFor(workspace)),
+      /Browser disconnected from the control session/,
+    );
+  });
+
+  await t.test("external loading timeout remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async (operation) => {
+      if (operation.name === "prepareZsxqTimelinePage") return undefined;
+      if (operation.name === "inspectZsxqTimelinePage") {
+        return {
+          ok: false,
+          failure: {
+            code: "TIMELINE_NOT_MOUNTED",
+            transient: true,
+            selectorCounts: { timeline: 0 },
+          },
+        };
+      }
+      throw new Error(`Unexpected operation: ${operation.name}`);
+    });
+    await assert.rejects(
+      collectZsxqTimelineRangeWithAutoRepair(tab, inputFor(workspace)),
+      (error) => error.code === "TIMELINE_DID_NOT_STABILIZE",
+    );
+  });
+
+  await t.test("checkpoint scope conflict remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    await writeFile(
+      path.join(workspace, "browser-collector-checkpoint.json"),
+      "{}\n",
+      "utf8",
+    );
+    const tab = tabFor(async () => undefined);
+    await assert.rejects(
+      collectZsxqTimelineRangeWithAutoRepair(tab, inputFor(workspace)),
+      (error) => error.code === "CHECKPOINT_SCOPE_MISMATCH",
+    );
+  });
+
+  await t.test("detail attachment DOM contract returns automatic repair", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async (operation) => {
+      if (operation.name === "waitForZsxqDetailReady") return {};
+      if (operation.name === "inspectZsxqDetailPage") {
+        return {
+          ok: false,
+          failure: {
+            code: "DETAIL_FILE_ATTACHMENT_MISMATCH",
+            transient: false,
+            selectorCounts: { fileItem: 1 },
+          },
+        };
+      }
+      if (operation.name === "collectZsxqDomDiagnostics") {
+        return { pageUrl: "https://wx.zsxq.com/topic/123" };
+      }
+      throw new Error(`Unexpected operation: ${operation.name}`);
+    });
+
+    const result = await collectZsxqDetailWithAutoRepair(tab, {
+      url: "https://wx.zsxq.com/topic/123",
+      workspace,
+      timeoutMs: 10,
+      pollIntervalMs: 1,
+    });
+    assert.equal(result.status, "automatic-repair-required");
+  });
+
+  await t.test("detail authentication failure remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(
+      async () => undefined,
+      "https://wx.zsxq.com/signin",
+    );
+    await assert.rejects(
+      collectZsxqDetailWithAutoRepair(tab, {
+        url: "https://wx.zsxq.com/topic/123",
+        workspace,
+      }),
+      /authentication or topic access is required/,
+    );
+  });
+
+  await t.test("detail loading timeout remains a direct error", async () => {
+    const workspace = await createWorkspace();
+    const tab = tabFor(async (operation) => {
+      if (operation.name === "waitForZsxqDetailReady") {
+        throw new Error(
+          "Knowledge Planet detail page did not become ready within 10ms",
+        );
+      }
+      throw new Error(`Unexpected operation: ${operation.name}`);
+    });
+    await assert.rejects(
+      collectZsxqDetailWithAutoRepair(tab, {
+        url: "https://wx.zsxq.com/topic/123",
+        workspace,
+        timeoutMs: 10,
+        pollIntervalMs: 1,
+      }),
+      (error) => error.code === "DETAIL_DID_NOT_STABILIZE",
+    );
+  });
 });
 
 test("v4 isolates the same owned timestamp text on detail pages", () => {
