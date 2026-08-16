@@ -1,0 +1,131 @@
+#!/usr/bin/env node
+
+import { lstat, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SKILL_NAME = "dingding-fetch";
+const MAX_ATTEMPTS = 1;
+const RUN_ID = /^[a-f0-9]{8}$/u;
+const FAILURE_CODE = /^[A-Z][A-Z0-9_]{0,79}$/u;
+const PHASE = /^[a-z][a-z0-9-]{0,79}$/u;
+
+function requiredMatch(value, pattern, label) {
+  if (typeof value !== "string" || !pattern.test(value)) {
+    throw new TypeError(`${label} has an invalid format`);
+  }
+  return value;
+}
+
+function requiredStatePath(value) {
+  if (typeof value !== "string" || value === "") {
+    throw new TypeError("statePath must be a non-empty path");
+  }
+  return path.resolve(value);
+}
+
+function validateState(value, statePath) {
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || value.schema_version !== 1
+    || value.skill !== SKILL_NAME
+    || !RUN_ID.test(value.run_id)
+    || value.max_attempts !== MAX_ATTEMPTS
+    || value.attempts_used !== MAX_ATTEMPTS
+    || value.first_failure === null
+    || typeof value.first_failure !== "object"
+    || Array.isArray(value.first_failure)
+    || !FAILURE_CODE.test(value.first_failure.code)
+    || !PHASE.test(value.first_failure.phase)
+  ) {
+    throw new Error(`invalid repair state: ${statePath}`);
+  }
+  return value;
+}
+
+async function readState(statePath) {
+  const fileStat = await lstat(statePath);
+  if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
+    throw new Error(`invalid repair state: ${statePath}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(statePath, "utf8"));
+  } catch (error) {
+    throw new Error(`invalid repair state: ${statePath}`, { cause: error });
+  }
+  return validateState(parsed, statePath);
+}
+
+function result(status, runId) {
+  return {
+    status,
+    skill: SKILL_NAME,
+    run_id: runId,
+    attempts_used: MAX_ATTEMPTS,
+    max_attempts: MAX_ATTEMPTS,
+  };
+}
+
+export async function beginRepair(options) {
+  if (options === null || typeof options !== "object" || Array.isArray(options)) {
+    throw new TypeError("repair options must be an object");
+  }
+  const statePath = requiredStatePath(options.statePath);
+  const runId = requiredMatch(options.runId, RUN_ID, "runId");
+  const failureCode = requiredMatch(
+    options.failureCode,
+    FAILURE_CODE,
+    "failureCode",
+  );
+  const phase = requiredMatch(options.phase, PHASE, "phase");
+  const state = {
+    schema_version: 1,
+    skill: SKILL_NAME,
+    run_id: runId,
+    attempts_used: MAX_ATTEMPTS,
+    max_attempts: MAX_ATTEMPTS,
+    first_failure: { code: failureCode, phase },
+  };
+
+  try {
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    return result("automatic-repair-authorized", runId);
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+
+  const existing = await readState(statePath);
+  if (existing.run_id !== runId) {
+    throw new Error(`repair state belongs to another run: ${statePath}`);
+  }
+  return result("repair-limit-reached", runId);
+}
+
+const isCli = process.argv[1]
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isCli) {
+  const [command, statePath, runId, failureCode, phase] = process.argv.slice(2);
+  try {
+    if (command !== "begin") {
+      throw new Error("command must be begin");
+    }
+    const response = await beginRepair({
+      statePath,
+      runId,
+      failureCode,
+      phase,
+    });
+    process.stdout.write(`${JSON.stringify(response)}\n`);
+  } catch (error) {
+    process.stderr.write(`repair-state: ${error.message}\n`);
+    process.exitCode = 1;
+  }
+}

@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-16 — Limit chat-source automatic repair to one attempt per run
+
+- **Clarification:** `dingding-fetch` and `feishu-fetch` may automatically repair a reproducible desktop UI-contract or local implementation defect, but the repair budget covers the entire frozen run rather than each group, thread, phase, or failure.
+- **Context:** Unbounded agent-led repair can loop when a desktop UI keeps changing or an external failure resembles an implementation defect, consuming excessive user tokens without improving completeness.
+- **Decision:** Generate one run ID and one private `repair-state.json`, atomically authorize exactly one repair attempt, never reset the budget after success, and stop further repair on `repair-limit-reached` or invalid state. Authentication, permission, app disconnection, source loading, ambiguous scope/time, and unreadable content remain direct failure or incomplete-report conditions and do not consume the repair attempt.
+- **Context:** The single repair may update only the smallest evidence-backed active skill procedure or implementation, must preserve all read-only, Beijing-window, completeness, privacy, and publication contracts, and does not authorize version-control or other unrelated mutations.
+
 ## 2026-08-16 — Automatically repair resumable ZSXQ collector defects
 
 - **Clarification:** A reproducible ZSXQ browser-contract or collector-internal runtime defect no longer waits for the user to reply “修复”. Authentication, browser disconnection, permission, invalid input, and external-service failures remain direct blockers rather than repair targets.

@@ -23,6 +23,15 @@ Resolve these values for the current run before freezing the collection window. 
 - `<display-timezone>`: use an optional user-supplied override or determine the timezone used by the app's displayed timestamps from the current app/host environment. If it cannot be proven, ask the user; never infer it from the agent's own location.
 - `<node-executable>`: resolve a Node.js executable from the active workspace runtime or executable search path and confirm that it can run the bundled publisher. Do not embed an absolute executable path. If no compatible executable is available, stop before publication and report the missing runtime.
 
+## Automatic repair budget
+
+- Before opening the first group, generate the eight-character lowercase hexadecimal `run-id` used by this run's output filename, create one private temporary repair directory, and set `<repair-state-path>` to its nonexistent `repair-state.json` child. Keep the same run ID, state path, Beijing cutoff, and repair directory for the entire run.
+- Read [references/repair-playbook.md](references/repair-playbook.md) completely before the first repair decision. Classify authentication, permission, app availability, source loading, timestamp ambiguity, unreadable content, and ambiguous scope failures as direct blockers or incomplete content; never spend the repair attempt on them.
+- For a reproducible DingTalk UI-contract or local implementation defect, run `<node-executable> <skill-directory>/scripts/repair-state.mjs begin <repair-state-path> <run-id> <FAILURE_CODE> <phase>` before changing code or trying a changed procedure. Use a content-free uppercase failure code and lowercase hyphenated phase; never place source content in either field.
+- On `automatic-repair-authorized`, show a non-blocking progress update and follow the repair playbook. Do not pause or ask the user for repair approval. After validation, resume from the frozen cutoff and last proven boundary.
+- On `repair-limit-reached`, do not inspect further for another repair, edit code again, reset state, or create a replacement state file. Mark the affected group incomplete and continue only far enough to preserve reliable recovered content and publish a verified incomplete report when possible.
+- The one repair attempt is shared across all groups and phases. A successful repair does not reset it. A corrupt, missing-after-use, replaced, or conflicting state file is a direct blocker, never permission to recreate the budget.
+
 ## 1. Freeze the Beijing window
 
 - Resolve one run cutoff before opening the first group. Express it as an explicit instant and as Beijing local time in `Asia/Shanghai` (`UTC+08:00`).
@@ -64,7 +73,7 @@ Do not claim complete coverage unless the upper boundary, lower boundary, every 
 
 ## 5. Write the Markdown snapshot
 
-- Generate an eight-character random hexadecimal `run-id`. Default to `<workspace-root>/output/dingtalk/YYYY-MM-DD-HHmmss-<run-id>-dingtalk-digest.md`, using the Beijing run cutoff for `YYYY-MM-DD-HHmmss`. Honor an explicit output path.
+- Use the run's already frozen eight-character hexadecimal `run-id`. Default to `<workspace-root>/output/dingtalk/YYYY-MM-DD-HHmmss-<run-id>-dingtalk-digest.md`, using the Beijing run cutoff for `YYYY-MM-DD-HHmmss`. Honor an explicit output path.
 - When any requested group or selected attachment is incomplete, write the recovered report to the sibling `*.incomplete.md` path. Never replace a complete report with an incomplete report.
 - Refuse to overwrite an existing or unmarked file. Ask for a different explicit path if the resolved path already exists.
 - Write a content-only report. Keep UI actions, search terms, screenshots, accessibility indexes, local temporary paths, and verification notes out of the report.
@@ -103,6 +112,7 @@ Do not claim complete coverage unless the upper boundary, lower boundary, every 
 - Confirm that no excluded interface text or internal process metadata entered the report and that no selected source wording was summarized or silently omitted.
 - Report the Beijing date, run cutoff, requested group count, selected message count, completeness, and clickable absolute output path.
 - If no file could be written, state the exact blocking group or boundary, why completeness cannot be established, and whether any existing output changed.
+- After a successful final publication and verification, remove only the exact private repair directory created for this run. On unresolved repair or validation failure, retain it only when it contains needed diagnostics or backups and report its path; never retain collected message content there.
 
 ## Hard rules
 
@@ -111,3 +121,4 @@ Do not claim complete coverage unless the upper boundary, lower boundary, every 
 - Never silently omit a selected image or unreadable source fragment.
 - Never describe an incomplete report as complete.
 - Never turn extracted source material into a summary; this skill filters and preserves original content.
+- Never perform more than one automatic repair attempt in a run or bypass `repair-limit-reached` by resetting, deleting, renaming, or replacing repair state.

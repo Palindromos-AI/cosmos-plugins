@@ -44,6 +44,29 @@ test("cosmos-sources-tools packages the two group-chat fetch skills", async () =
   }
 });
 
+test("group-chat skills use one-attempt automatic repair contracts", async () => {
+  for (const skillName of ["dingding-fetch", "feishu-fetch"]) {
+    const skillRoot = path.join(pluginRoot, "skills", skillName);
+    const skill = await readFile(path.join(skillRoot, "SKILL.md"), "utf8");
+    const playbook = await readFile(
+      path.join(skillRoot, "references", "repair-playbook.md"),
+      "utf8",
+    );
+    const combined = `${skill}\n${playbook}`;
+
+    assert.match(skill, /automatic-repair-authorized/);
+    assert.match(skill, /repair-limit-reached/);
+    assert.match(skill, /repair-state\.mjs begin/);
+    assert.match(skill, /Do not pause or ask the user for repair approval\./);
+    assert.match(playbook, /exactly one automatic repair attempt per run/i);
+    assert.match(playbook, /do not reset|never reset/i);
+    assert.doesNotMatch(
+      combined,
+      /unlimited repair|retry until|repair until|无限修复|反复修复/iu,
+    );
+  }
+});
+
 for (const { label, draftName, publishReport } of [
   {
     label: "dingding-fetch",

@@ -1,5 +1,11 @@
 # Gotchas
 
+## A successful repair must not reset the run's repair budget
+
+- **Symptom:** DingTalk or Feishu collection repairs one group successfully, then repeatedly repairs later failures and consumes unbounded tokens.
+- **Root cause:** The repair counter was scoped to a group, phase, or failure instead of the whole frozen run, or its state was deleted after a successful resume.
+- **How to avoid:** Create one atomic `repair-state.json` per run, consume its only attempt before changing procedure or code, keep it through every group and thread, and treat `repair-limit-reached`, missing-after-use, corrupt, replaced, or conflicting state as a hard stop for further repair.
+
 ## Automatic repair does not broaden task authority
 
 - **Symptom:** A ZSXQ browser-contract failure is treated as permission to commit, install dependencies, bypass access controls, change unrelated files, or redesign the collector.
