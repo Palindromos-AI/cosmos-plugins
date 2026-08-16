@@ -1,5 +1,23 @@
 # Gotchas
 
+## A protected PDF viewer can still provide an official member download
+
+- **Symptom:** A ZSXQ PDF is reported as “仅允许在 App 查看” even though its web file-detail dialog visibly offers `下载文件`.
+- **Root cause:** Inline-view protection was incorrectly treated as proof that every web acquisition route was blocked.
+- **How to avoid:** Open the exact inventoried file card, verify the preview filename and one visible official download control, wait for the browser download event, then copy and extract that exact artifact locally. Do not guess duplicate filenames or use undocumented private APIs.
+
+## A timestamp container can acquire visible metadata children without changing its selector
+
+- **Symptom:** ZSXQ collection stops with `TIMESTAMP_FORMAT_MISMATCH` even though the screenshot visibly shows `YYYY-MM-DD HH:mm`.
+- **Root cause:** The `.info > .date` element gained a direct `.readed-count` child, so `innerText` combined the timestamp and `阅读人数 N` even though the timestamp element itself still matched the old selector.
+- **How to avoid:** Version the adapter, require the exact direct read-count child, and read only the timestamp element's owned text node. Preserve the older adapters unchanged for fixtures and rollback.
+
+## A new planet may reach the absolute timeline end before showing an older date
+
+- **Symptom:** Daily coverage cannot exit pagination when every topic in a newly created planet belongs to the target date and the UI already shows `没有更多了`.
+- **Root cause:** The collector accepted only an older visible topic as a lower boundary and ignored the platform's exact absolute-end marker.
+- **How to avoid:** Treat one exact direct `.no-more` marker with the expected text as a stronger lower-bound proof, include it in stabilization, and continue to fail closed when the marker is absent or structurally ambiguous.
+
 ## Package file assertions must ignore generated Python bytecode caches
 
 - **Symptom:** The stockdata marketplace test fails after otherwise successful Python unit tests because `__pycache__` appears in the source tree.

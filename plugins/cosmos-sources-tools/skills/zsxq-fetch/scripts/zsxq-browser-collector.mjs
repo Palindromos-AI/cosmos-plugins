@@ -49,13 +49,32 @@ export const ZSXQ_BROWSER_CONTRACT_V2 = Object.freeze({
   }),
 });
 
-export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
+export const ZSXQ_BROWSER_CONTRACT_V3 = Object.freeze({
   version: "zsxq-web-angular-v3",
   selectors: Object.freeze({
     ...ZSXQ_BROWSER_CONTRACT_V2.selectors,
     imageGallery: "app-image-gallery",
     imageWithinGallery: ":scope img",
     imageGalleryDescendant: ":scope *",
+  }),
+});
+
+export const ZSXQ_BROWSER_CONTRACT_V4 = Object.freeze({
+  version: "zsxq-web-angular-v4",
+  selectors: Object.freeze({
+    ...ZSXQ_BROWSER_CONTRACT_V3.selectors,
+    timestampReadCount: ":scope > .readed-count",
+    timelineEnd: ":scope > .no-more",
+  }),
+});
+
+export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
+  version: "zsxq-web-angular-v5",
+  selectors: Object.freeze({
+    ...ZSXQ_BROWSER_CONTRACT_V4.selectors,
+    filePreviewRoot: "app-file-preview .file-preview-container",
+    filePreviewName: ":scope .file > .file-name",
+    fileDownloadControl: ":scope .file > .btn-wrapper > .btn.download",
   }),
 });
 
@@ -179,6 +198,21 @@ export function inspectZsxqTimelinePage(input) {
   if (topics.length === 0) {
     return fail("TIMELINE_NOT_MOUNTED", baseCounts, { transient: true });
   }
+  const timelineEndMarkers = typeof selectors.timelineEnd === "string"
+    ? [...roots.elements[0].querySelectorAll(selectors.timelineEnd)]
+    : [];
+  if (
+    timelineEndMarkers.length > 1
+    || (
+      timelineEndMarkers.length === 1
+      && text(timelineEndMarkers[0]).trim() !== "没有更多了"
+    )
+  ) {
+    return fail("TIMELINE_END_MARKER_MISMATCH", {
+      ...baseCounts,
+      timelineEnd: timelineEndMarkers.length,
+    });
+  }
 
   const topicSnapshots = [];
   let pendingImageCount = 0;
@@ -200,19 +234,37 @@ export function inspectZsxqTimelinePage(input) {
     const timestamp = exactlyOne(header.elements[0], selectors.timestamp);
     const body = exactlyOne(talk.elements[0], selectors.body);
     const controls = [...talk.elements[0].querySelectorAll(selectors.expandControl)];
+    const timestampReadCounts = typeof selectors.timestampReadCount === "string"
+      && timestamp.count === 1
+      ? [...timestamp.elements[0].querySelectorAll(selectors.timestampReadCount)]
+      : [];
+    const timestampText = typeof selectors.timestampReadCount === "string"
+      ? [...(timestamp.elements[0]?.childNodes ?? [])]
+          .filter((node) => Number(node.nodeType) === 3)
+          .map((node) => typeof node.nodeValue === "string" ? node.nodeValue : "")
+          .join("")
+          .trim()
+      : text(timestamp.elements[0]).trim();
     if (
       author.count !== 1
       || timestamp.count !== 1
       || body.count !== 1
       || controls.length > 1
+      || (
+        typeof selectors.timestampReadCount === "string"
+        && timestampReadCounts.length !== 1
+      )
       || text(author.elements[0]).trim() === ""
-      || text(timestamp.elements[0]).trim() === ""
+      || timestampText === ""
     ) {
       return fail("TOPIC_FIELD_MISMATCH", {
         ...baseCounts,
         topicIndex: index,
         author: author.count,
         timestamp: timestamp.count,
+        ...(typeof selectors.timestampReadCount === "string"
+          ? { timestampReadCount: timestampReadCounts.length }
+          : {}),
         body: body.count,
         expandControl: controls.length,
       });
@@ -451,7 +503,7 @@ export function inspectZsxqTimelinePage(input) {
       dom_index: index,
       dom_topic_index: domTopicIndex,
       author: text(author.elements[0]).trim(),
-      displayed_timestamp: text(timestamp.elements[0]).trim(),
+      displayed_timestamp: timestampText,
       body: bodyText,
       collapsed,
       image_count: images.length,
@@ -475,6 +527,7 @@ export function inspectZsxqTimelinePage(input) {
     pageUrl: `${location.origin}${location.pathname}`,
     planetName: text(planet.elements[0]).trim(),
     topicCount: topicSnapshots.length,
+    endReached: timelineEndMarkers.length === 1,
     topics: topicSnapshots,
     collapsedTopicIndices: topicSnapshots
       .filter((topic) => topic.collapsed)
@@ -589,14 +642,30 @@ export function inspectZsxqDetailPage(input) {
   const authors = [...headers[0].querySelectorAll(selectors.author)];
   const timestamps = [...headers[0].querySelectorAll(selectors.timestamp)];
   const bodies = [...talks[0].querySelectorAll(selectors.body)];
+  const timestampReadCounts = typeof selectors.timestampReadCount === "string"
+    && timestamps.length === 1
+    ? [...timestamps[0].querySelectorAll(selectors.timestampReadCount)]
+    : [];
+  const timestampText = typeof selectors.timestampReadCount === "string"
+    ? [...(timestamps[0]?.childNodes ?? [])]
+        .filter((node) => Number(node.nodeType) === 3)
+        .map((node) => typeof node.nodeValue === "string" ? node.nodeValue : "")
+        .join("")
+        .trim()
+    : typeof timestamps[0]?.innerText === "string"
+      ? timestamps[0].innerText.trim()
+      : "";
   if (
     authors.length !== 1
     || timestamps.length !== 1
     || bodies.length !== 1
+    || (
+      typeof selectors.timestampReadCount === "string"
+      && timestampReadCounts.length !== 1
+    )
     || typeof authors[0]?.innerText !== "string"
     || authors[0].innerText.trim() === ""
-    || typeof timestamps[0]?.innerText !== "string"
-    || timestamps[0].innerText.trim() === ""
+    || timestampText === ""
   ) {
     return {
       ok: false,
@@ -606,6 +675,9 @@ export function inspectZsxqDetailPage(input) {
         selectorCounts: {
           author: authors.length,
           timestamp: timestamps.length,
+          ...(typeof selectors.timestampReadCount === "string"
+            ? { timestampReadCount: timestampReadCounts.length }
+            : {}),
           body: bodies.length,
         },
       },
@@ -849,9 +921,7 @@ export function inspectZsxqDetailPage(input) {
     pageUrl: `${location.origin}${location.pathname}`,
     topicId,
     author: typeof authors[0].innerText === "string" ? authors[0].innerText.trim() : "",
-    displayed_timestamp: typeof timestamps[0].innerText === "string"
-      ? timestamps[0].innerText.trim()
-      : "",
+    displayed_timestamp: timestampText,
     body: typeof bodies[0].innerText === "string" ? bodies[0].innerText : "",
     collapsed,
     image_gallery_count: imageGalleries.length,
@@ -871,6 +941,147 @@ function assertTab(tab) {
   ) {
     throw new TypeError(
       "Pass an authenticated browser tab with playwright.evaluate and playwright.locator",
+    );
+  }
+}
+
+/** Download one inventoried timeline PDF through the official member UI. */
+export async function downloadZsxqTimelinePdfOnTab(tab, input) {
+  assertTab(tab);
+  if (typeof tab.playwright.waitForEvent !== "function") {
+    throw new TypeError("The browser tab must support download events");
+  }
+  if (input === null || typeof input !== "object") {
+    throw new TypeError("Pass an inventoried timeline PDF occurrence");
+  }
+  const { topicDomIndex, fileOrdinal, expectedFilename } = input;
+  if (!Number.isInteger(topicDomIndex) || topicDomIndex < 0) {
+    throw new TypeError("topicDomIndex must be a non-negative integer");
+  }
+  if (!Number.isInteger(fileOrdinal) || fileOrdinal < 1) {
+    throw new TypeError("fileOrdinal must be a positive integer");
+  }
+  if (
+    typeof expectedFilename !== "string"
+    || expectedFilename.trim() === ""
+    || !/\.pdf$/iu.test(expectedFilename)
+  ) {
+    throw new TypeError("expectedFilename must be a non-empty PDF filename");
+  }
+
+  const adapter = ZSXQ_BROWSER_CONTRACT;
+  const selectors = adapter.selectors;
+  const topic = tab.playwright.locator(selectors.timelineTopic).nth(topicDomIndex);
+  const talk = topic.locator(selectors.topicTalk);
+  const fileItems = talk.locator(selectors.fileItem);
+  const fileCount = await fileItems.count();
+  if (fileOrdinal > fileCount) {
+    throw new ZsxqBrowserCollectionError(
+      "PDF_FILE_OCCURRENCE_MISMATCH",
+      "pdf-download",
+      "The inventoried timeline PDF occurrence is no longer present",
+      { topicDomIndex, fileOrdinal, fileCount },
+    );
+  }
+  const fileCard = fileItems.nth(fileOrdinal - 1);
+  const cardNames = fileCard.locator(selectors.fileName);
+  const cardNameCount = await cardNames.count();
+  const observedCardName = cardNameCount === 1
+    ? (await cardNames.innerText()).trim()
+    : "";
+  if (cardNameCount !== 1 || observedCardName !== expectedFilename) {
+    throw new ZsxqBrowserCollectionError(
+      "PDF_FILE_IDENTITY_MISMATCH",
+      "pdf-download",
+      "The selected timeline file card does not match the inventoried PDF",
+      {
+        topicDomIndex,
+        fileOrdinal,
+        fileNameCount: cardNameCount,
+        filenameMatched: observedCardName === expectedFilename,
+      },
+    );
+  }
+
+  try {
+    await fileCard.click();
+  } catch (error) {
+    if (directBrowserError(error)) throw error;
+    throw new ZsxqBrowserCollectionError(
+      "PDF_PREVIEW_OPEN_FAILED",
+      "pdf-download",
+      "The official Knowledge Planet file preview could not be opened",
+      { topicDomIndex, fileOrdinal },
+      { cause: error },
+    );
+  }
+
+  const timeoutMs = input.timeoutMs ?? 8_000;
+  const pollIntervalMs = input.pollIntervalMs ?? 150;
+  const deadline = Date.now() + timeoutMs;
+  let preview;
+  let previewName;
+  let downloadControl;
+  while (Date.now() <= deadline) {
+    preview = tab.playwright.locator(selectors.filePreviewRoot);
+    if (await preview.count() === 1) {
+      const names = preview.locator(selectors.filePreviewName);
+      const controls = preview.locator(selectors.fileDownloadControl);
+      if (await names.count() === 1 && await controls.count() === 1) {
+        previewName = (await names.innerText()).trim();
+        downloadControl = controls;
+        break;
+      }
+    }
+    await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())));
+  }
+  if (!downloadControl || previewName !== expectedFilename) {
+    throw new ZsxqBrowserCollectionError(
+      "PDF_DOWNLOAD_CONTROL_MISMATCH",
+      "pdf-download",
+      "The official file preview did not expose one matching download control",
+      {
+        topicDomIndex,
+        fileOrdinal,
+        filenameMatched: previewName === expectedFilename,
+      },
+    );
+  }
+  const controlText = (await downloadControl.innerText()).trim();
+  const controlVisible = typeof downloadControl.isVisible === "function"
+    ? await downloadControl.isVisible()
+    : false;
+  if (controlText !== "下载文件" || controlVisible !== true) {
+    throw new ZsxqBrowserCollectionError(
+      "PDF_DOWNLOAD_CONTROL_MISMATCH",
+      "pdf-download",
+      "The official file preview download control is not exact and visible",
+      {
+        topicDomIndex,
+        fileOrdinal,
+        downloadControlTextMatched: controlText === "下载文件",
+        downloadControlVisible: controlVisible,
+      },
+    );
+  }
+
+  try {
+    const downloadPromise = tab.playwright.waitForEvent("download", { timeoutMs });
+    const [download] = await Promise.all([downloadPromise, downloadControl.click()]);
+    return {
+      download,
+      filename: expectedFilename,
+      acquisition: "official-ui-download",
+      contract_version: adapter.version,
+    };
+  } catch (error) {
+    if (directBrowserError(error)) throw error;
+    throw new ZsxqBrowserCollectionError(
+      "PDF_DOWNLOAD_FAILED",
+      "pdf-download",
+      "The official Knowledge Planet PDF download did not complete",
+      { topicDomIndex, fileOrdinal },
+      { cause: error },
     );
   }
 }
@@ -1202,6 +1413,7 @@ function snapshotSignature(snapshot) {
     snapshot.contractVersion,
     snapshot.pageUrl,
     snapshot.planetName,
+    snapshot.endReached,
     snapshot.topics,
     snapshot.scroll.height,
   ]);
@@ -1243,6 +1455,7 @@ async function waitForStableTimeline(tab, options = {}) {
       if (
         options.minimumTopicCount === undefined
         || snapshot.topicCount >= options.minimumTopicCount
+        || snapshot.endReached === true
       ) {
         const signature = snapshotSignature(snapshot);
         consecutiveStable = signature === previousSignature ? consecutiveStable + 1 : 1;
@@ -1260,6 +1473,7 @@ async function waitForStableTimeline(tab, options = {}) {
       typeof options.progressAction === "function"
       && options.minimumTopicCount !== undefined
       && (lastSnapshot?.topicCount ?? 0) < options.minimumTopicCount
+      && lastSnapshot?.endReached !== true
       && Date.now() >= nextProgressRetryAt
     ) {
       await options.progressAction();
@@ -1331,6 +1545,14 @@ function parseDisplayedTimestamp(displayedTimestamp) {
     );
   }
   return { iso, date: beijingDateFromTimestamp(iso), milliseconds };
+}
+
+export function timelineCoverageBoundaryReached({
+  oldestPlatformDate,
+  targetDate,
+  endReached,
+}) {
+  return endReached === true || oldestPlatformDate < targetDate;
 }
 
 function normalizeTimelineTopics(snapshot) {
@@ -2030,7 +2252,11 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
   const checkpointTopicCount = checkpoint?.topics.length ?? 0;
   while (
     allTopics.length < checkpointTopicCount
-    || allTopics.at(-1).platform_date >= input.targetDate
+    || !timelineCoverageBoundaryReached({
+      oldestPlatformDate: allTopics.at(-1).platform_date,
+      targetDate: input.targetDate,
+      endReached: snapshot.endReached,
+    })
   ) {
     if (scrollPasses >= maxScrolls) {
       throw new ZsxqBrowserCollectionError(
@@ -2112,7 +2338,10 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     access_complete: true,
     evidence:
       `Contract ${adapter.version}; visible top ${allTopics[0].timestamp}; `
-      + `visible lower boundary ${allTopics.at(-1).timestamp}; ${scrollPasses} scroll pass(es)`,
+      + (snapshot.endReached
+        ? `absolute timeline end after ${allTopics.at(-1).timestamp}; `
+        : `visible lower boundary ${allTopics.at(-1).timestamp}; `)
+      + `${scrollPasses} scroll pass(es)`,
   };
   const checkpointPath = await saveCheckpoint(input.workspace, {
     phase: "timeline-complete",

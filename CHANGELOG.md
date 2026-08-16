@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Added the immutable ZSXQ Angular v5 adapter and official UI download workflow so a protected PDF with a visible member download control is downloaded and extracted locally instead of being misreported as App-only.
+- Added the immutable ZSXQ Angular v4 browser adapter so nested read-count text no longer contaminates topic timestamps, and so an exact absolute timeline-end marker can prove the lower collection boundary for a newly created planet with no older topic.
 - Excluded ignored Python bytecode caches from the stockdata packaged-file assertion so running runtime tests does not make the marketplace test fail.
 - Clarified that reusable stock-data business entry points must not stop the shared SuperMind Jupyter server; the runtime cleans up only the exact kernel it creates.
 - Made the runtime's business-argument and remote-file-retention boundaries explicit so workspace orchestration does not mistake source submission or download for parameter passing or remote cleanup.
