@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-18 — Report marketplace changes through a separate user-owned repository
+
+- **Clarification:** Modification reporting applies only to files distributed by the Cosmos Plugins marketplace. External workspaces, runtime configuration, retrieved data, generated output, credentials, and user-owned business scripts are never report triggers.
+- **Context:** Agents may repair installed Skills after websites or desktop apps change, but those local fixes are otherwise invisible to the marketplace maintainer and can be overwritten by a later release. Requiring every user to fork the marketplace and submit a pull request adds setup and maintenance cost.
+- **Decision:** Add the standalone `cosmos-fix-tools` plugin with the `fix-report` Skill and add an explicit invocation handoff to every existing Skill. During one-time setup, the user initializes and configures only `<cosmos-workspace-root>/fix-reports`, never the shared root or another subtree. After a packaged repair passes validation, automatically write, stage, commit, and push the sanitized report without another request or approval. Run every Git command explicitly against `fix-reports`, require a synchronized branch, verify the report path and blob before and after commit, and push an explicit `<report-commit>:<upstream-merge-ref>` refspec; never commit or push the modified marketplace source repository.
+- **Context:** The report repository is an external audit channel, not marketplace-owned state. Writing or pushing a report does not recursively trigger another report, and a failed push must remain visibly unreported remotely while preserving the local report and commit for recovery.
+
 ## 2026-08-17 — Target joined Knowledge Planets and keep owner-specific behavior out of the collector
 
 - **Clarification:** Production collection targets planets the user has joined. The self-created `健康星球` is retained only as a PDF-download fixture because the production planet does not permit PDF download.

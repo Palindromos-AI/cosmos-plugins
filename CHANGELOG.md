@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Standalone `cosmos-fix-tools` plugin with the `fix-report` Skill, strict packaged-content scope, privacy-safe reports under `<cosmos-workspace-root>/fix-reports`, synchronized-upstream checks, and automatic report-only commit/push without an additional approval gate.
+- Explicit automatic `$fix-report` invocation guidance and missing-plugin handling in every existing marketplace Skill, while excluding changes confined to external workspaces, runtime configuration, generated output, retrieved data, and user-owned business scripts.
 - A shared Cosmos workspace-root convention with independently configured `<root>/sources` and `<root>/stockdata` subtrees, plus a deterministic sources workspace manager, canonical output confinement, and offline binding-safety tests.
 - One-attempt automatic repair workflows for `dingding-fetch` and `feishu-fetch`, with atomic per-run repair state, evidence-driven playbooks, direct-failure boundaries, and a hard no-reset limit that prevents repeated repair loops and excess token use.
 - Contract-neutral stockdata implementation references covering the workspace processing architecture and previously validated SuperMind API, batching, completeness, delayed-data, and failure-classification patterns.
@@ -22,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-knowledge-tools` to `0.1.1`, `cosmos-sources-tools` to `0.4.2`, and `cosmos-stockdata-tools` to `0.3.1` for the marketplace-change reporting handoff.
 - Bumped `cosmos-sources-tools` to `0.4.1`; `zsxq-fetch` now uses the immutable Angular v6 adapter for joined-planet timestamp compatibility.
 - Bumped `cosmos-sources-tools` to `0.4.0`; all four source Skills now require the plugin's durable external sources workspace and keep final reports under its `output/` namespace.
 - Bumped `cosmos-stockdata-tools` to `0.3.0`; configurations accept a shared root, derive the stockdata subtree, and require the single versioned schema without alternate layout compatibility.

@@ -147,3 +147,7 @@ Use each user's own source accounts and project-specific authentication method. 
 - Never claim that one user's workspace changes are automatically shared with other users.
 - Share reusable capability across all users only through a separate upstream review and versioned release.
 - Do not commit, merge, push, publish, install dependencies, or change unrelated files without the user's authorization.
+
+## Marketplace change reporting
+
+If this run changes any file distributed with the Cosmos Plugins marketplace, invoke `$fix-report` after validation and before the final response. Pass the already resolved `<cosmos-workspace-root>` when available. Do not invoke `$fix-report` for changes confined to an external workspace, including generated output, retrieved data, runtime configuration, or user-owned business scripts. The report-only commit and push performed by `$fix-report` never authorizes committing or pushing the modified marketplace source repository. If `$fix-report` is unavailable, stop and ask the user to install `cosmos-fix-tools@cosmos-plugins`; never omit the report silently. After repair validation, `$fix-report` runs automatically, without additional approval or request, for its report-only commit and push.

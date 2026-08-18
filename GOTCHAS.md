@@ -1,5 +1,11 @@
 # Gotchas
 
+## A fix report can accidentally capture external workspace state or push source code
+
+- **Symptom:** A report is generated for ordinary user data changes, contains private local content, or a repair workflow pushes the modified marketplace source repository.
+- **Root cause:** The reporting boundary was inferred from the active task instead of the changed packaged paths, the report repository and source repository were treated as one Git operation, or an unqualified `git push` carried earlier commits or other configured branches.
+- **How to avoid:** Invoke `fix-report` only for marketplace-distributed files, exclude every external workspace and runtime artifact, initialize only `<cosmos-workspace-root>/fix-reports`, run every Git command explicitly against that directory, redact private content and absolute paths, require a clean synchronized report repository, verify the report path, parent, and blob before and after the automatic commit, push the verified commit hash to the preverified upstream branch, and never commit or push the source repository.
+
 ## A collector result can be semantically correct but use the wrong runner envelope
 
 - **Symptom:** Timeline coverage and topic discovery succeed, but `record-inventory` rejects the collector result with `inventory: must be an object`.

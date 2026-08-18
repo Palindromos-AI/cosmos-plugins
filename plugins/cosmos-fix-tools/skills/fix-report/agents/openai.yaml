@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Report"
+  short_description: "自动记录并推送 Cosmos marketplace 修改报告"
+  default_prompt: "Use $fix-report to automatically record and push a sanitized report for a Cosmos marketplace content change."

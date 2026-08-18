@@ -78,3 +78,7 @@ Do not report success until:
 4. Provenance records the exact vault-relative original path and SHA-256.
 5. A second plan reports `no-op`; otherwise the reported stale or conflict state is preserved without deleting or overwriting the target.
 6. Every requested file is accounted for.
+
+## Marketplace change reporting
+
+If this run changes any file distributed with the Cosmos Plugins marketplace, invoke `$fix-report` after validation and before the final response. Pass the already resolved `<cosmos-workspace-root>` when available. Do not invoke `$fix-report` for changes confined to an external workspace, including generated output, retrieved data, runtime configuration, or user-owned business scripts. The report-only commit and push performed by `$fix-report` never authorizes committing or pushing the modified marketplace source repository. If `$fix-report` is unavailable, stop and ask the user to install `cosmos-fix-tools@cosmos-plugins`; never omit the report silently. After repair validation, `$fix-report` runs automatically, without additional approval or request, for its report-only commit and push.
