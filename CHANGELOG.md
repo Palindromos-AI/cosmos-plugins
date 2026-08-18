@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-sources-tools` to `0.4.1`; `zsxq-fetch` now uses the immutable Angular v6 adapter for joined-planet timestamp compatibility.
 - Bumped `cosmos-sources-tools` to `0.4.0`; all four source Skills now require the plugin's durable external sources workspace and keep final reports under its `output/` namespace.
 - Bumped `cosmos-stockdata-tools` to `0.3.0`; configurations accept a shared root, derive the stockdata subtree, and require the single versioned schema without alternate layout compatibility.
 - Made marketplace, plugin, and Skill update isolation explicit: capability updates never configure, migrate, move, overwrite, or delete user settings and workspace data.
@@ -38,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Made the ZSXQ collector return the runner's exact `{ "topics": [...] }` inventory envelope, preventing live collection from failing at `record-inventory` after coverage succeeds.
+- Allowed zero or one direct ZSXQ read-count child while still rejecting duplicates and extracting only the timestamp container's owned text, so joined planets without that node remain collectable.
 - Added the immutable ZSXQ Angular v5 adapter and official UI download workflow so a protected PDF with a visible member download control is downloaded and extracted locally instead of being misreported as App-only.
 - Added the immutable ZSXQ Angular v4 browser adapter so nested read-count text no longer contaminates topic timestamps, and so an exact absolute timeline-end marker can prove the lower collection boundary for a newly created planet with no older topic.
 - Excluded ignored Python bytecode caches from the stockdata packaged-file assertion so running runtime tests does not make the marketplace test fail.

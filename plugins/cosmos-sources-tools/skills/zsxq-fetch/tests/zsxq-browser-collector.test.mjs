@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  buildZsxqRunnerInventory,
   collectZsxqDomDiagnostics,
   collectZsxqDetailWithAutoRepair,
   collectZsxqTimelineRangeWithAutoRepair,
@@ -17,8 +18,10 @@ import {
   ZSXQ_BROWSER_CONTRACT,
   ZSXQ_BROWSER_CONTRACT_V3,
   ZSXQ_BROWSER_CONTRACT_V4,
+  ZSXQ_BROWSER_CONTRACT_V5,
   ZSXQ_REPAIR_NOTIFICATION,
 } from "../scripts/zsxq-browser-collector.mjs";
+import { normalizeInventory } from "../scripts/run-model.mjs";
 
 const fixture = JSON.parse(await readFile(
   fileURLToPath(new URL("./fixtures/timeline-read-count-v4.json", import.meta.url)),
@@ -342,12 +345,132 @@ test("v4 still fails closed while an inventoried image is loading", () => {
   assert.equal(snapshot.failure.transient, true);
 });
 
+test("v6 accepts an absent direct read-count node without widening timestamp text", () => {
+  const { topics } = installTimelineFixture();
+  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
+  topics.forEach((topicElementFixture, index) => {
+    const header = topicElementFixture.querySelector(selectors.topicHeader);
+    const timestamp = header.querySelector(selectors.timestamp);
+    timestamp.set(selectors.timestampReadCount, []);
+    timestamp.childNodes = [
+      { nodeType: 3, nodeValue: ` ${fixture.topics[index].timestamp} ` },
+      new FakeElement({ innerText: "Unrelated nested metadata" }),
+    ];
+    timestamp.innerText = `${fixture.topics[index].timestamp}\nUnrelated nested metadata`;
+  });
+
+  const previous = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT_V5 });
+  assert.equal(previous.ok, false);
+  assert.equal(previous.failure.code, "TOPIC_FIELD_MISMATCH");
+
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+  assert.equal(snapshot.contractVersion, "zsxq-web-angular-v6");
+  assert.deepEqual(
+    snapshot.topics.map(({ displayed_timestamp }) => displayed_timestamp),
+    fixture.topics.filter(({ sticky }) => !sticky).map(({ timestamp }) => timestamp),
+  );
+});
+
+test("v6 still rejects duplicate direct read-count nodes", () => {
+  const { topics } = installTimelineFixture();
+  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
+  const header = topics[1].querySelector(selectors.topicHeader);
+  const timestamp = header.querySelector(selectors.timestamp);
+  timestamp.set(selectors.timestampReadCount, [
+    new FakeElement({ innerText: "阅读人数 1" }),
+    new FakeElement({ innerText: "阅读人数 2" }),
+  ]);
+
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, false);
+  assert.equal(snapshot.failure.code, "TOPIC_FIELD_MISMATCH");
+  assert.equal(snapshot.failure.selectorCounts.timestampReadCount, 2);
+});
+
+test("runner inventory helper uses the top-level topics envelope", () => {
+  const inventory = buildZsxqRunnerInventory([{
+    source_order: 1,
+    source: {},
+    author: "Fixture Author",
+    timestamp: "2026-08-15T07:30:00+08:00",
+    body: { status: "empty" },
+    image_count: 0,
+    image_count_evidence: "Expanded topic contains no image slots",
+    attachments: [],
+    browser_assets: [],
+    platform_date: "2026-08-15",
+    _timestampMilliseconds: Date.parse("2026-08-15T07:30:00+08:00"),
+  }]);
+
+  assert.deepEqual(inventory, {
+    topics: [{
+      source_order: 1,
+      source: {},
+      author: "Fixture Author",
+      timestamp: "2026-08-15T07:30:00+08:00",
+      body: { status: "empty" },
+      image_count: 0,
+      image_count_evidence: "Expanded topic contains no image slots",
+      attachments: [],
+    }],
+  });
+  assert.equal(normalizeInventory(inventory).recorded, true);
+});
+
 test("repair diagnostics retain structure but redact content and URL secrets", () => {
   installTimelineFixture();
   const diagnostic = collectZsxqDomDiagnostics({ adapter: ZSXQ_BROWSER_CONTRACT });
   const serialized = JSON.stringify(diagnostic);
   assert.equal(diagnostic.pageUrl, "https://wx.zsxq.com/group/fixture");
+  assert.equal("timestampReadCountOptional" in diagnostic.selectorCounts, false);
   assert.doesNotMatch(serialized, /supersecret|secret body|Newest Author|Dedicated newest body/);
+});
+
+test("successful collector result is accepted directly by the runner inventory contract", async (t) => {
+  installTimelineFixture();
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-collector-success-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+
+  const tab = {
+    goto: async () => undefined,
+    url: async () => "https://wx.zsxq.com/group/fixture",
+    playwright: {
+      evaluate: async (operation) => {
+        if (operation.name === "prepareZsxqTimelinePage") return undefined;
+        if (operation.name === "inspectZsxqTimelinePage") return snapshot;
+        if (operation.name === "extractZsxqTopicBodies") {
+          return snapshot.topics.map((topic, domIndex) => ({
+            dom_index: domIndex,
+            body: topic.body,
+          }));
+        }
+        throw new Error(`Unexpected operation: ${operation.name}`);
+      },
+      locator: () => {
+        throw new Error("No locator should be needed for a stable absolute-end fixture");
+      },
+    },
+  };
+
+  const result = await collectZsxqTimelineRangeWithAutoRepair(tab, {
+    planetName: fixture.planet_name,
+    planetUrl: "https://wx.zsxq.com/group/fixture",
+    targetDate: "2026-08-15",
+    filtersClearedConfirmed: true,
+    topBoundaryConfirmed: true,
+    workspace,
+    timeoutMs: 100,
+    pollIntervalMs: 1,
+    maxScrolls: 0,
+  });
+
+  assert.equal(result.status, "complete");
+  assert.equal(result.contract_version, "zsxq-web-angular-v6");
+  assert.equal(normalizeInventory(result.inventory).recorded, true);
+  assert.equal(result.inventory.topics.length, 2);
 });
 
 test("repair handoff requires automatic repair without user approval", async (t) => {
@@ -640,7 +763,74 @@ test("v4 isolates the same owned timestamp text on detail pages", () => {
   assert.equal(snapshot.body, "Dedicated newest body");
 });
 
-test("v5 downloads an exact timeline PDF through the official file preview", async () => {
+test("v6 accepts an absent direct read-count node on detail pages", () => {
+  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
+  const topic = fixture.topics[1];
+  const timestamp = timestampElement(topic);
+  timestamp.set(selectors.timestampReadCount, []);
+  timestamp.childNodes = [
+    { nodeType: 3, nodeValue: ` ${topic.timestamp} ` },
+    new FakeElement({ innerText: "Unrelated nested metadata" }),
+  ];
+  timestamp.innerText = `${topic.timestamp}\nUnrelated nested metadata`;
+  const author = new FakeElement({ innerText: topic.author });
+  const header = new FakeElement()
+    .set(selectors.author, [author])
+    .set(selectors.timestamp, [timestamp]);
+  const talk = emptyTalk(selectors, topic.body);
+  const panel = new FakeElement();
+  globalThis.document = new FakeElement()
+    .set(selectors.detailPanel, [panel])
+    .set(selectors.detailTopic, [talk])
+    .set(selectors.detailHeader, [header]);
+  globalThis.location = {
+    href: "https://wx.zsxq.com/topic/123456789",
+    origin: "https://wx.zsxq.com",
+    pathname: "/topic/123456789",
+  };
+  globalThis.window = {
+    getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }),
+  };
+
+  const snapshot = inspectZsxqDetailPage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+  assert.equal(snapshot.displayed_timestamp, topic.timestamp);
+});
+
+test("v6 still rejects duplicate direct read-count nodes on detail pages", () => {
+  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
+  const topic = fixture.topics[1];
+  const timestamp = timestampElement(topic);
+  timestamp.set(selectors.timestampReadCount, [
+    new FakeElement({ innerText: "阅读人数 1" }),
+    new FakeElement({ innerText: "阅读人数 2" }),
+  ]);
+  const author = new FakeElement({ innerText: topic.author });
+  const header = new FakeElement()
+    .set(selectors.author, [author])
+    .set(selectors.timestamp, [timestamp]);
+  const talk = emptyTalk(selectors, topic.body);
+  const panel = new FakeElement();
+  globalThis.document = new FakeElement()
+    .set(selectors.detailPanel, [panel])
+    .set(selectors.detailTopic, [talk])
+    .set(selectors.detailHeader, [header]);
+  globalThis.location = {
+    href: "https://wx.zsxq.com/topic/123456789",
+    origin: "https://wx.zsxq.com",
+    pathname: "/topic/123456789",
+  };
+  globalThis.window = {
+    getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }),
+  };
+
+  const snapshot = inspectZsxqDetailPage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, false);
+  assert.equal(snapshot.failure.code, "DETAIL_FIELD_MISMATCH");
+  assert.equal(snapshot.failure.selectorCounts.timestampReadCount, 2);
+});
+
+test("v6 preserves the v5 official PDF download path", async () => {
   const { tab, card, downloadControl, download } = installDownloadTab();
 
   const result = await downloadZsxqTimelinePdfOnTab(tab, {
@@ -649,7 +839,7 @@ test("v5 downloads an exact timeline PDF through the official file preview", asy
     expectedFilename: "fixture.pdf",
   });
 
-  assert.equal(ZSXQ_BROWSER_CONTRACT.version, "zsxq-web-angular-v5");
+  assert.equal(ZSXQ_BROWSER_CONTRACT.version, "zsxq-web-angular-v6");
   assert.equal(card.clicks, 1);
   assert.equal(downloadControl.clicks, 1);
   assert.equal(result.download, download);

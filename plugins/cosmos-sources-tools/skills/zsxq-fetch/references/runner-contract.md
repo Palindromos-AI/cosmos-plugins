@@ -47,12 +47,14 @@ Every screenshot, downloaded binary, rendered PDF page, JSON input, or other rep
 
 Use `scripts/zsxq-browser-collector.mjs` from the persistent authenticated
 browser-control session before `record-coverage` and `record-inventory`.
-`collectZsxqTimelineRangeWithAutoRepair` returns runner-ready `coverage` and
-`inventory` plus separate `browser_assets` used for exact image capture. It
+`collectZsxqTimelineRangeWithAutoRepair` returns runner-ready `coverage` and an
+`inventory` object shaped exactly as `{ "topics": [...] }`, plus separate
+`browser_assets` used for exact image capture. Pass the complete returned
+`inventory` object to `record-inventory`; do not pass `inventory.topics`. It
 atomically checkpoints the loaded timeline inside the run workspace. Do not add
 `browser_assets` to the runner inventory JSON.
 
-The active `zsxq-web-angular-v5` adapter preserves the immutable v1 through v4
+The active `zsxq-web-angular-v6` adapter preserves the immutable v1 through v5
 contracts for rollback. v2 added exact `app-file-gallery` PDF-card inventory: it
 orders those cards together with images and links by their topic-local DOM
 position, and a file card is accepted only when it has one direct PDF icon and
@@ -85,6 +87,11 @@ to the caller for copying into the private run workspace. A protected inline
 viewer is not evidence that downloading is blocked. The caller must resolve the
 event's exact artifact instead of guessing a browser filename, and must not use
 undocumented private endpoints.
+
+v6 accepts zero or one direct `.readed-count` child under `.info > .date` and
+continues to read only the date container's owned text node. Joined planets may
+omit the read-count child entirely; duplicate children still fail closed. This
+is a page-structure compatibility rule, not a branch based on planet ownership.
 
 Collector checkpoints use schema version 2: stored topics keep only query-free
 transport URLs, and every checkpoint prefix comparison strips URL queries and

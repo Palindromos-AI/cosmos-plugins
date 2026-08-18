@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-17 — Target joined Knowledge Planets and keep owner-specific behavior out of the collector
+
+- **Clarification:** Production collection targets planets the user has joined. The self-created `健康星球` is retained only as a PDF-download fixture because the production planet does not permit PDF download.
+- **Context:** Joined-planet feedback showed that `.info > .date` can have no direct `.readed-count` child. The earlier v4 rule required exactly one because that was the observed structure in the PDF fixture, incorrectly turning a page variant into a production requirement.
+- **Decision:** Add immutable adapter `zsxq-web-angular-v6`, accept zero or one direct read-count child on timeline and detail pages, extract only the timestamp container's owned text, and continue to reject duplicate children. Do not detect or branch on whether the user owns the planet. Keep v1-v5 unchanged for rollback and use `健康星球` only for PDF regression tests.
+- **Context:** The same live run exposed an independent collector-to-runner integration defect. The collector must return the exact runner-ready `{ "topics": [...] }` envelope and integration tests must pass the real collector result into runner normalization.
+
 ## 2026-08-16 — Standardize durable plugin workspaces without giving updates ownership
 
 - **Clarification:** `cosmos-sources-tools` and `cosmos-stockdata-tools` both require durable user workspaces, but retain separate configuration files and isolated data subtrees.

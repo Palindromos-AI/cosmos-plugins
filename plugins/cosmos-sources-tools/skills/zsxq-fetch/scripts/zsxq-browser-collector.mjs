@@ -68,7 +68,7 @@ export const ZSXQ_BROWSER_CONTRACT_V4 = Object.freeze({
   }),
 });
 
-export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
+export const ZSXQ_BROWSER_CONTRACT_V5 = Object.freeze({
   version: "zsxq-web-angular-v5",
   selectors: Object.freeze({
     ...ZSXQ_BROWSER_CONTRACT_V4.selectors,
@@ -76,6 +76,12 @@ export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
     filePreviewName: ":scope .file > .file-name",
     fileDownloadControl: ":scope .file > .btn-wrapper > .btn.download",
   }),
+});
+
+export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
+  version: "zsxq-web-angular-v6",
+  timestampReadCountOptional: true,
+  selectors: Object.freeze({ ...ZSXQ_BROWSER_CONTRACT_V5.selectors }),
 });
 
 export const ZSXQ_REPAIR_NOTIFICATION =
@@ -288,7 +294,13 @@ export function inspectZsxqTimelinePage(input) {
       || controls.length > 1
       || (
         typeof selectors.timestampReadCount === "string"
-        && timestampReadCounts.length !== 1
+        && (
+          timestampReadCounts.length > 1
+          || (
+            adapter.timestampReadCountOptional !== true
+            && timestampReadCounts.length !== 1
+          )
+        )
       )
       || text(author.elements[0]).trim() === ""
       || timestampText === ""
@@ -697,7 +709,13 @@ export function inspectZsxqDetailPage(input) {
     || bodies.length !== 1
     || (
       typeof selectors.timestampReadCount === "string"
-      && timestampReadCounts.length !== 1
+      && (
+        timestampReadCounts.length > 1
+        || (
+          adapter.timestampReadCountOptional !== true
+          && timestampReadCounts.length !== 1
+        )
+      )
     )
     || typeof authors[0]?.innerText !== "string"
     || authors[0].innerText.trim() === ""
@@ -1653,6 +1671,10 @@ function inventoryTopic(topic) {
   return result;
 }
 
+export function buildZsxqRunnerInventory(topics) {
+  return { topics: topics.map(inventoryTopic) };
+}
+
 /**
  * Project a normalized topic onto the fields that stay stable across page
  * reloads. Signed transport URLs rotate their query parameters between
@@ -2411,7 +2433,7 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     status: "complete",
     contract_version: adapter.version,
     coverage,
-    inventory: matchingTopics.map(inventoryTopic),
+    inventory: buildZsxqRunnerInventory(matchingTopics),
     browser_assets: matchingTopics.flatMap((topic) => topic.browser_assets.map(
       (asset, index) => ({
         topic_source_order: topic.source_order,

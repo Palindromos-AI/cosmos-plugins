@@ -1,5 +1,17 @@
 # Gotchas
 
+## A collector result can be semantically correct but use the wrong runner envelope
+
+- **Symptom:** Timeline coverage and topic discovery succeed, but `record-inventory` rejects the collector result with `inventory: must be an object`.
+- **Root cause:** The collector returned the topic array directly while the runner contract requires a top-level `{ "topics": [...] }` object.
+- **How to avoid:** Treat the collector-to-runner boundary as a strict integration contract, return the complete runner-ready object, and test the actual successful collector result through `normalizeInventory` rather than testing only an array-mapping helper.
+
+## Joined planets may omit the direct read-count node
+
+- **Symptom:** Collection stops with `TOPIC_FIELD_MISMATCH` or `DETAIL_FIELD_MISMATCH` even though the visible timestamp is valid.
+- **Root cause:** The adapter required exactly one `.readed-count` child based on a page variant that is not present in every joined planet.
+- **How to avoid:** In v6 accept zero or one direct read-count child, keep owned-text timestamp extraction, reject duplicates, and never add a planet-ownership branch for this structural difference.
+
 ## Updating capability code must not become a workspace migration
 
 - **Symptom:** Installing or upgrading a marketplace plugin changes a user's configured path, rewrites runtime metadata, or moves/deletes files in `sources/` or `stockdata/`.
@@ -28,7 +40,7 @@
 
 - **Symptom:** ZSXQ collection stops with `TIMESTAMP_FORMAT_MISMATCH` even though the screenshot visibly shows `YYYY-MM-DD HH:mm`.
 - **Root cause:** The `.info > .date` element gained a direct `.readed-count` child, so `innerText` combined the timestamp and `阅读人数 N` even though the timestamp element itself still matched the old selector.
-- **How to avoid:** Version the adapter, require the exact direct read-count child, and read only the timestamp element's owned text node. Preserve the older adapters unchanged for fixtures and rollback.
+- **How to avoid:** Version the adapter and read only the timestamp element's owned text node. Historical v4 requires exactly one direct read-count child; active v6 accepts zero or one and rejects duplicates. Preserve older adapters unchanged for fixtures and rollback.
 
 ## A new planet may reach the absolute timeline end before showing an older date
 
