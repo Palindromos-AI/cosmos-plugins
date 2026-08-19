@@ -64,16 +64,32 @@ Packages this Skill:
 
 ## Runtime requirements
 
-- `llm-wiki` and `raw-to-markdown` use the micromamba `wiki` Python environment.
-- `raw-to-markdown` declares its pinned Python packages in its bundled `requirements.txt`.
+- Python: every Cosmos Skill that runs Python (`llm-wiki`, `raw-to-markdown`, `stockdata-fetch`) uses one fixed micromamba environment named `cosmos` and installs packages only with `uv pip` inside it. Before first use, install [micromamba](https://mamba.readthedocs.io/) and [uv](https://docs.astral.sh/uv/), then create the environment once: `micromamba create -n cosmos python=3.12`. Skills never use system Python, `pip`, `conda`, or `micromamba install`.
+- `raw-to-markdown` declares its pinned Python packages in its bundled `requirements.txt`; install them with `micromamba run -n cosmos uv pip install -r <skill-dir>/requirements.txt`.
 - `defuddle` requires Node.js and npm/npx.
 - Obsidian operations require a compatible Obsidian installation and, where applicable, Obsidian CLI access.
 - `cosmos-sources-tools` requires Node.js to manage its separate `~/.config/cosmos-sources-tools/runtime.json` binding. The manager derives `<cosmos-workspace-root>/sources`, refuses silent rebinding, and never changes the old workspace during an authorized reconfiguration.
 - `cls-fetch` requires Node.js with built-in `fetch` support and network access to `cls.cn`; it uses no credentials or external npm packages.
 - `zsxq-fetch` requires Node.js 22.13 or later, the Codex Chrome-control capability, and a Knowledge Planet session already signed in within Chrome. Every requested date and “today” use the Beijing `Asia/Shanghai` boundary rather than the host or browser timezone. Its deterministic runner uses only built-in Node.js APIs; native-pixel image tiling optionally installs the pinned `sharp` dependency from the skill-local lockfile after user approval.
 - `dingding-fetch` and `feishu-fetch` require Node.js, Codex Computer Use, and an existing signed-in DingTalk or Feishu desktop session. At run time they resolve the configured sources workspace, localized app target, display timezone, and Node executable; no developer-machine paths or app identifiers are packaged. They operate read-only, use one frozen Beijing-time cutoff across all requested groups, and keep collected content local.
-- `stockdata-fetch` pins `websocket-client==1.8.0` for its generic SuperMind runtime and bundles read-only, contract-neutral implementation references. On first use, each user chooses `<cosmos-workspace-root>`, a personal SuperMind token-file absolute path, and a micromamba environment together; the runtime derives `<cosmos-workspace-root>/stockdata`. Its separate `~/.config/cosmos-stockdata-tools/runtime.json` stores only schema-1 binding metadata—never token content—and later calls reuse it regardless of the current directory. Python commands use `micromamba run -n <env>` and approved package installation uses `uv pip`. Reconfiguration requires explicit authorization; missing or unsupported configuration schemas are rejected. Executable business scripts, accepted data contracts, credentials, mutable dependencies, and downloaded data remain outside the plugin.
-- `fix-report` requires Node.js and uses exactly `<cosmos-workspace-root>/fix-reports`. During one-time setup, each user must run `git init "<cosmos-workspace-root>/fix-reports"`, establish its initial branch/upstream baseline, and configure that repository's remote and authentication. Never initialize `<cosmos-workspace-root>` itself or any other workspace subtree. The bundled writer rejects traversal and symbolic-link directories and writes standard-input bytes through one exclusive, canonically confined file handle. After setup, the Skill automatically commits and pushes reports by running every Git command explicitly against `fix-reports`; it never initializes or reconfigures a repository and never commits or pushes the modified marketplace source repository.
+- `stockdata-fetch` pins `websocket-client==1.8.0` for its generic SuperMind runtime and bundles read-only, contract-neutral implementation references. On first use, each user chooses `<cosmos-workspace-root>` and a personal SuperMind token-file absolute path; the runtime derives `<cosmos-workspace-root>/stockdata` and records the fixed `cosmos` environment. Its separate `~/.config/cosmos-stockdata-tools/runtime.json` stores only schema-1 binding metadata—never token content—and later calls reuse it regardless of the current directory. Python commands use `micromamba run -n cosmos` and approved package installation uses `micromamba run -n cosmos uv pip`. Reconfiguration requires explicit authorization; missing or unsupported configuration schemas are rejected. Executable business scripts, accepted data contracts, credentials, mutable dependencies, and downloaded data remain outside the plugin.
+- `fix-report` requires Node.js and Git, and uses exactly `<cosmos-workspace-root>/fix-reports`. Reports are delivered through a **public GitHub repository that you own** and whose URL you share with the marketplace maintainer, who reads new reports there. Reports never contain private source content, credentials, account identifiers, or absolute local paths, which is why the repository can be public. One-time setup, done once per user:
+
+  1. Create an empty public repository on GitHub, for example `<your-account>/cosmos-fix-reports`, and send its URL to the maintainer.
+  2. Initialize the local report repository and connect it. Never initialize `<cosmos-workspace-root>` itself or any other workspace subtree:
+
+     ```bash
+     git init "<cosmos-workspace-root>/fix-reports"
+     cd "<cosmos-workspace-root>/fix-reports"
+     git commit --allow-empty -m "Initialize fix reports"
+     git branch -M main
+     git remote add origin git@github.com:<your-account>/cosmos-fix-reports.git
+     git push -u origin main
+     ```
+
+  3. Confirm that `git push` works without prompts (SSH key or a stored credential helper). The Skill pushes automatically and cannot answer interactive prompts.
+
+  After setup, the Skill automatically commits and pushes each report by running every Git command explicitly against `fix-reports`; it never initializes or reconfigures a repository and never commits or pushes the modified marketplace source repository.
 
 Marketplace, plugin, and Skill upgrades replace capability code only. They never invoke workspace configuration or own, migrate, overwrite, or delete the sources or stockdata plugin's external `runtime.json` or user workspace content.
 
@@ -91,3 +107,7 @@ codex plugin add cosmos-knowledge-tools@cosmos-plugins
 codex plugin add cosmos-sources-tools@cosmos-plugins
 codex plugin add cosmos-stockdata-tools@cosmos-plugins
 ```
+
+## License
+
+Proprietary. See [LICENSE](LICENSE). Use is limited to customers with a written agreement with Palindromos; portions derived from third-party open-source projects remain under their own licenses.

@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A proprietary `LICENSE` for the marketplace and a README license section; third-party-derived portions stay under their own licenses.
+- README setup steps for the fix-report channel: the customer creates a public GitHub repository, shares its URL with the maintainer, and connects `<cosmos-workspace-root>/fix-reports` to it with an initial commit and upstream.
+- README prerequisites for the fixed Python environment: micromamba, uv, and a one-time `micromamba create -n cosmos python=3.12`.
 - A dependency-free `fix-report` writer with slug and CLI validation, canonical containment, symbolic-link rejection, and same-handle exclusive no-clobber writes.
 - Standalone `cosmos-fix-tools` plugin with the `fix-report` Skill, strict packaged-content scope, privacy-safe reports under `<cosmos-workspace-root>/fix-reports`, synchronized-upstream checks, and automatic report-only commit/push without an additional approval gate.
 - Explicit automatic `$fix-report` invocation guidance and missing-plugin handling in every existing marketplace Skill, while excluding changes confined to external workspaces, runtime configuration, generated output, retrieved data, and user-owned business scripts.
@@ -25,6 +28,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-fix-tools` to `0.1.2`, `cosmos-knowledge-tools` to `0.1.3`, `cosmos-sources-tools` to `0.4.4`, and `cosmos-stockdata-tools` to `0.3.3` for the report-channel, fixed-environment, and developer-reference cleanup.
+- Fixed every Python-running Skill (`llm-wiki`, `raw-to-markdown`, `stockdata-fetch`) to the micromamba environment `cosmos` with `uv pip`; `stockdata-fetch` no longer asks the user to choose an environment and records `cosmos` in its binding.
+- `fix-report` now states that the report remote is a public repository owned by the user and read by the maintainer, and its missing-setup message lists the exact setup commands.
+- Removed developer-specific references from distributed files and repository docs: the `defuddle` Skill no longer names another agent's fetch tool, `llm-wiki` no longer names a specific vault plugin or "this vault", the `zsxq-fetch` default prompt uses a `<星球名称>` placeholder, the `cls-fetch` repair playbook no longer names a development project package, and DECISION.md refers to the maintainer's test planet generically.
+- Relaxed the pinned plugin-version assertions in `tests/cosmos-fix-tools.test.mjs`, `tests/cosmos-sources-tools.test.mjs`, and `tests/cosmos-stockdata-tools.test.mjs` to any semantic version, so version bumps no longer break the wiring tests; the stockdata test now requires the fixed `micromamba run -n cosmos python` launcher and rejects a user-chosen `<env>`.
 - Defined `cosmos-fix-tools` as the mandatory companion for every installed business plugin while keeping the three business plugins independently optional; each Skill now preflights that companion before a packaged modification, and missing-plugin recovery installs or upgrades only it before restarting the repair in a new task.
 - Bumped `cosmos-knowledge-tools` to `0.1.2`, `cosmos-fix-tools` to `0.1.1`, `cosmos-sources-tools` to `0.4.3`, and `cosmos-stockdata-tools` to `0.3.2` for the companion-installation, report-path, and authorization-boundary fixes.
 - Preserved caller Skills' general commit, merge, push, and publish authorization rules while adding one narrow exception for the independently configured report-only commit/push.

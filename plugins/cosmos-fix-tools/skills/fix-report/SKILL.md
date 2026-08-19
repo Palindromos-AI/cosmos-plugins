@@ -31,7 +31,7 @@ Writing, committing, or pushing a report inside `fix-reports` never triggers ano
 1. Reuse the shared Cosmos workspace root already resolved by the parent skill or task.
 2. If no root is available, ask the user for it. Do not infer one from unrelated paths.
 3. Use exactly `<cosmos-workspace-root>/fix-reports` as the report repository.
-4. Require the user to have created that exact directory, initialized only it as a dedicated Git repository, and completed its user-configured remote, branch, upstream, and authentication setup once before automatic reporting begins.
+4. Require the user to have created that exact directory, initialized only it as a dedicated Git repository, and completed its user-configured remote, branch, upstream, and authentication setup once before automatic reporting begins. The remote is a public repository owned by the user; the user has shared its URL with the marketplace maintainer, who reads reports there, so every report must satisfy the privacy rules below.
 5. Run `git -C "<cosmos-workspace-root>/fix-reports" rev-parse --show-toplevel` and require its canonical result to equal exactly `<cosmos-workspace-root>/fix-reports`.
 6. Require an attached current branch and resolve its already configured upstream remote and merge ref. Do not infer or create either value. Validate the remote name against `^[A-Za-z0-9][A-Za-z0-9._-]*$`; validate that the merge ref starts with `refs/heads/` and passes `git check-ref-format`.
 7. Run `git -C "<cosmos-workspace-root>/fix-reports" fetch <upstream-remote>`, then run `git -C "<cosmos-workspace-root>/fix-reports" rev-list --left-right --count HEAD...@{upstream}` and require exactly `0 0`. This prevents an earlier local commit or an unseen remote commit from being included in the report push.
@@ -39,7 +39,7 @@ Writing, committing, or pushing a report inside `fix-reports` never triggers ano
 
 Pass every Git operand through an argument-array API when one is available. If the execution tool accepts only a shell command string, shell-quote every dynamic path, remote, ref, revision, and commit message as one data argument. Never concatenate resolved Git values into shell syntax or execute them through `eval`.
 
-Never run `git init` at `<cosmos-workspace-root>` or in `sources/`, `stockdata/`, any parent directory, or any neighboring workspace directory. The user may run `git init "<cosmos-workspace-root>/fix-reports"` only during one-time setup. This skill does not initialize or reconfigure a repository, add or change a remote, switch branches, alter credentials, or choose a hosting provider. If setup is missing, stop and give the user the exact prerequisite; after setup exists, do not request further approval.
+Never run `git init` at `<cosmos-workspace-root>` or in `sources/`, `stockdata/`, any parent directory, or any neighboring workspace directory. The user may run `git init "<cosmos-workspace-root>/fix-reports"` only during one-time setup. This skill does not initialize or reconfigure a repository, add or change a remote, switch branches, alter credentials, or choose a hosting provider. If setup is missing, stop and give the user the exact prerequisite: create an empty public GitHub repository and share its URL with the maintainer, then run `git init "<cosmos-workspace-root>/fix-reports"`, create an initial commit, rename the branch to `main`, add that repository as `origin`, and `git push -u origin main` (the marketplace README lists these commands). After setup exists, do not request further approval.
 
 ## Confirm the packaged change
 

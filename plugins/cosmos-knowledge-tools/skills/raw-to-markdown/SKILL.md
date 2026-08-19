@@ -21,16 +21,16 @@ Convert local source files into Markdown without changing the originals or invok
 
 ## Runtime
 
-Resolve `<skill-dir>` to the directory containing this `SKILL.md`, using the Skill locator provided by Codex. Use the project Python environment:
+Resolve `<skill-dir>` to the directory containing this `SKILL.md`, using the Skill locator provided by Codex. Every Cosmos plugin runs Python in the micromamba environment `cosmos`:
 
 ```bash
-micromamba run -n wiki python "<skill-dir>/scripts/raw_to_markdown.py" <command> --vault . <path>
+micromamba run -n cosmos python "<skill-dir>/scripts/raw_to_markdown.py" <command> --vault . <path>
 ```
 
-If the dependency check fails, install the pinned local converter through the project package manager:
+If the dependency check fails, install the pinned local converter into that environment with `uv pip`:
 
 ```bash
-micromamba run -n wiki uv pip install -r "<skill-dir>/requirements.txt"
+micromamba run -n cosmos uv pip install -r "<skill-dir>/requirements.txt"
 ```
 
 Do not substitute system Python, `pip`, `conda`, or `micromamba install`.
@@ -41,7 +41,7 @@ Do not substitute system Python, `pip`, `conda`, or `micromamba install`.
 2. Run the read-only plan:
 
    ```bash
-   micromamba run -n wiki python "<skill-dir>/scripts/raw_to_markdown.py" plan --vault . "raw/path/source.docx"
+   micromamba run -n cosmos python "<skill-dir>/scripts/raw_to_markdown.py" plan --vault . "raw/path/source.docx"
    ```
 
    Add `--recursive` only when the user explicitly requests a folder or recursive conversion.
@@ -49,7 +49,7 @@ Do not substitute system Python, `pip`, `conda`, or `micromamba install`.
 4. Run conversion only after the request and plan authorize the exact write set:
 
    ```bash
-   micromamba run -n wiki python "<skill-dir>/scripts/raw_to_markdown.py" convert --vault . "raw/path/source.docx"
+   micromamba run -n cosmos python "<skill-dir>/scripts/raw_to_markdown.py" convert --vault . "raw/path/source.docx"
    ```
 5. Re-run `plan` on the same inputs. Successful outputs must report `no-op`. If the source changed concurrently, report `stale-conflict` and preserve the newly created sidecar for inspection.
 6. Inspect each Markdown file for non-empty content, useful structure, valid frontmatter, and an exact source link. For PDF, presentation, and spreadsheet inputs, compare representative sections against the original. For PDFs, also check that prose was not rendered as dense empty-column tables and that real tabular material was not flattened unnecessarily.

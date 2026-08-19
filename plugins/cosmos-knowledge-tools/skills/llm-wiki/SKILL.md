@@ -5,7 +5,7 @@ description: Build, query, lint, and maintain a structured, source-grounded Obsi
 
 # LLM Wiki
 
-Use the current Codex model for every semantic decision. Use local code only for deterministic vault operations. Never call the Karpathy LLM Wiki plugin, its configured provider, or any API key in `.obsidian/plugins/karpathywiki/data.json`.
+Use the current Codex model for every semantic decision. Use local code only for deterministic vault operations. Never call a third-party wiki plugin, its configured provider, or any API key stored under the vault's `.obsidian/plugins/` configuration.
 
 ## Fixed defaults
 
@@ -28,13 +28,13 @@ For a request combining operations, read every applicable reference before chang
 
 ## Use deterministic tooling
 
-Resolve `<skill-dir>` to the directory containing this `SKILL.md`, using the Skill locator provided by Codex. Use the Python launcher configured by the current project. In this vault, run:
+Resolve `<skill-dir>` to the directory containing this `SKILL.md`, using the Skill locator provided by Codex. Every Cosmos plugin runs Python in the micromamba environment `cosmos`; run:
 
 ```bash
-micromamba run -n wiki python "<skill-dir>/scripts/wiki_ops.py" <command> --vault . --wiki-folder wiki
+micromamba run -n cosmos python "<skill-dir>/scripts/wiki_ops.py" <command> --vault . --wiki-folder wiki
 ```
 
-The helper uses only the Python standard library. If a future change requires a package, install it with `micromamba run -n wiki uv pip ...`; do not call `pip`, `conda`, or `micromamba install` directly.
+The helper uses only the Python standard library. If a future change requires a package, install it with `micromamba run -n cosmos uv pip ...`; do not call `pip`, `conda`, or `micromamba install` directly.
 
 Available commands:
 

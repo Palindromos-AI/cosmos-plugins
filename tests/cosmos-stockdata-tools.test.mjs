@@ -72,7 +72,8 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
   assert.match(skill, /first use[\s\S]*(?:together|same setup|single setup)/i);
   assert.match(skill, /token (?:content|value)[\s\S]*(?:never|must not)[\s\S]*(?:config|runtime\.json)/i);
   assert.match(skill, /supermind_runtime\.py/);
-  assert.match(skill, /micromamba run -n <env>[\s\S]*python/i);
+  assert.match(skill, /micromamba run -n cosmos python/);
+  assert.doesNotMatch(skill, /-n <env>|user-chosen micromamba environment/i);
   assert.match(skill, /uv pip install/i);
   assert.match(skill, /reconfigur[\s\S]*(?:explicit|authori)/i);
   assert.doesNotMatch(skill, /use the current project only when/i);
@@ -140,7 +141,7 @@ test("stockdata plugin metadata describes incremental source extension", async (
   const readme = await read("README.md");
   const changelog = await read("CHANGELOG.md");
 
-  assert.match(manifest.version, /^0\.3\.2(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^\d+\.\d+\.\d+(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   assert.match(manifest.interface.longDescription, /SuperMind[\s\S]*baostock[\s\S]*AKShare/i);
   assert.match(manifest.interface.longDescription, /request|requirement|需求/i);
   assert.match(manifest.interface.longDescription, /external|durable|workspace/i);

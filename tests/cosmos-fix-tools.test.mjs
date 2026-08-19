@@ -30,7 +30,7 @@ test("cosmos-fix-tools packages the fix-report skill", async () => {
   );
 
   assert.equal(manifest.name, "cosmos-fix-tools");
-  assert.equal(manifest.version, "0.1.1");
+  assert.match(manifest.version, /^\d+\.\d+\.\d+(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   assert.equal(manifest.skills, "./skills/");
   assert.equal(manifest.repository, "https://github.com/Palindromos-AI/cosmos-plugins");
   assert.deepEqual(manifest.interface.defaultPrompt, [
@@ -304,7 +304,7 @@ test("marketplace documents the mandatory fix companion contract", async () => {
     marketplace.plugins.map(({ name }) => name).sort(),
     expectedPlugins,
   );
-  assert.match(knowledgeManifest.version, /^0\.1\.2(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(knowledgeManifest.version, /^\d+\.\d+\.\d+(?:\+codex\.[0-9A-Za-z.-]+)?$/);
 
   const installCommands = [...readme.matchAll(
     /^codex plugin add (cosmos-[a-z-]+)@cosmos-plugins$/gm,

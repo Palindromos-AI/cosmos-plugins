@@ -1,5 +1,11 @@
 # Gotchas
 
+## Maintainer-machine names leak into distributed files and repository docs
+
+- **Symptom:** A customer's Codex is told to run Python in an environment named after the maintainer's own vault, to prefer Defuddle over another agent product's fetch tool, to archive the maintainer's own Knowledge Planet by name, or to skip a specific vault plugin—none of which exist on the customer's machine—and repository docs cloned by `codex plugin marketplace add` name the maintainer's private planet.
+- **Root cause:** Skills were written and tested against the maintainer's environment, and copied Skills kept wording aimed at a different agent product; nothing scanned distributed text for machine-, account-, or product-specific names before release.
+- **How to avoid:** Fix shared conventions once (Python environment `cosmos`, `uv pip`) instead of naming ad-hoc environments; use placeholders such as `<星球名称>` in default prompts; describe fixtures generically in DECISION/GOTCHAS; grep the tree for environment names, planet or group names, tool names from other agents, and development-project package names before every release.
+
 ## A fix report can escape its repository, capture unrelated state, or push source code
 
 - **Symptom:** A report is generated for ordinary user data changes, lands outside `fix-reports`, contains unrelated local content, or a repair workflow pushes the modified marketplace source repository.
@@ -88,7 +94,7 @@
 
 - **Symptom:** `validate_plugin.py` exits with `ModuleNotFoundError: No module named 'yaml'` and reports no plugin findings.
 - **Root cause:** The helper imports PyYAML at process startup, while the host `python3` may not provide that package.
-- **How to avoid:** Run the validator in a user-designated micromamba environment that already includes PyYAML. If none is designated, ask the user to create or select one; do not install into or silently choose another environment, and do not describe the startup failure as a manifest validation failure.
+- **How to avoid:** Run the validator in the micromamba `cosmos` environment with PyYAML installed there via `uv pip`; do not install into or silently choose another environment, and do not describe the startup failure as a manifest validation failure.
 
 ## Removing a fixed extractor can also discard proven implementation knowledge
 

@@ -18,7 +18,7 @@ This repository is the `cosmos-plugins` Codex marketplace. It packages reusable 
   - `skills/feishu-fetch/`: Portable workspace/app/timezone/runtime bindings, Feishu Computer Use workflow, one-attempt automatic UI-contract repair state and playbook, agent metadata, in-group thread coverage, image-extraction rules, and content-bound atomic report publisher.
 - `plugins/cosmos-stockdata-tools/`: Stock-market data operations packaged as a separate plugin.
   - `.codex-plugin/plugin.json`: Plugin identity, discovery metadata, and skill path.
-  - `skills/stockdata-fetch/SKILL.md`: Workflow for growing `<cosmos-workspace-root>/stockdata` for each user, with source priority `SuperMind -> baostock -> AKShare`, contract-specific validation, and explicit provenance. First use binds the root, derived workspace, personal token-file path, and micromamba environment in external local metadata.
+  - `skills/stockdata-fetch/SKILL.md`: Workflow for growing `<cosmos-workspace-root>/stockdata` for each user, with source priority `SuperMind -> baostock -> AKShare`, contract-specific validation, and explicit provenance. First use binds the root, derived workspace, and personal token-file path in external local metadata; the Python environment is the fixed micromamba `cosmos` environment shared by every Cosmos plugin.
   - `skills/stockdata-fetch/references/implementation-architecture.md`: Contract-neutral responsibility map from accepted requirement through source adapter, normalization, validation, delivery, and provenance, including failure semantics and a verification matrix.
   - `skills/stockdata-fetch/references/supermind-api-patterns.md`: Read-only, previously validated SuperMind call shapes and implementation patterns for trading dates, universes, daily prices, research-kernel compatibility, transport fallbacks, shared-server ownership, batching, completeness, and source-outcome classification.
   - `skills/stockdata-fetch/scripts/supermind_runtime.py`: Generic versioned SuperMind token/JupyterHub transport for server control, code or workspace-file execution, durable file download, output redaction, and exact owned-kernel cleanup. It contains no dataset or workbook contract.
@@ -26,11 +26,12 @@ This repository is the `cosmos-plugins` Codex marketplace. It packages reusable 
   - `skills/stockdata-fetch/agents/openai.yaml`: UI metadata and a requirement-driven invocation prompt.
 - `plugins/cosmos-fix-tools/`: Marketplace-change reporting packaged as a separate companion plugin.
   - `.codex-plugin/plugin.json`: Plugin identity, discovery metadata, and skill path.
-  - `skills/fix-report/SKILL.md`: Scope classifier, privacy rules, report format, and automatic report-only Git commit/push workflow. Every Git command explicitly targets the user-managed `<cosmos-workspace-root>/fix-reports` repository; the shared root and all other external workspace content remain outside its Git boundary.
+  - `skills/fix-report/SKILL.md`: Scope classifier, privacy rules, report format, and automatic report-only Git commit/push workflow. Every Git command explicitly targets the user-managed `<cosmos-workspace-root>/fix-reports` repository, whose remote is a public repository owned by the user and watched by the maintainer; the shared root and all other external workspace content remain outside its Git boundary.
   - `skills/fix-report/scripts/write-report.mjs`: Dependency-free Node.js writer that validates report slugs and CLI arguments, rejects traversal and symbolic-link directories, verifies canonical containment, and writes standard-input bytes through one exclusive no-follow file handle.
   - `skills/fix-report/agents/openai.yaml`: UI metadata and invocation prompt.
 - `tests/`: Marketplace/plugin integration tests covering packaged skill discovery and catalog wiring.
-- `README.md`: Installation, available-plugin, runtime, and update guidance.
+- `README.md`: Installation, available-plugin, runtime, update, and license guidance.
+- `LICENSE`: Proprietary customer license for the marketplace; third-party-derived portions stay under their own licenses.
 
 ## Dependency flow
 

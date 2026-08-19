@@ -1,4 +1,4 @@
 interface:
   display_name: "Stockdata Fetch"
   short_description: "绑定个人运行环境并按需求扩展持久股票数据脚本"
-  default_prompt: "使用 $stockdata-fetch 配置共享 Cosmos 工作区根目录、SuperMind token 文件和 Python 环境，再按需求逐步扩展股票数据脚本。"
+  default_prompt: "使用 $stockdata-fetch 配置共享 Cosmos 工作区根目录和 SuperMind token 文件，再按需求逐步扩展股票数据脚本。"

@@ -46,7 +46,7 @@ If the current request cannot be observed reliably, stop with an inconclusive di
 3. After editing and before validation, record the repaired SHA-256 digest of every changed file so restoration can distinguish the repair from a concurrent edit.
 4. Retain Shanghai date boundaries, overlap-and-deduplicate protection, monotonic cursor checks, schema validation, and fail-closed behavior unless direct evidence proves a specific rule changed.
 5. Update `cls-api.md` with the newly observed contract and remove obsolete statements.
-6. Starting from the active `SKILL.md`, use an ancestor project suite only when it demonstrably belongs to this skill, such as a `package.json` named `cls-fetch-skill-development` whose tests import the active scripts. Never run an unrelated current project's test or lint commands.
+6. Starting from the active `SKILL.md`, use an ancestor project suite only when it demonstrably belongs to this skill, meaning its tests import the active scripts. Never run an unrelated current project's test or lint commands.
 7. Run the focused regression test and every associated project test and lint command. If no associated suite is present, also run `node --check` on every changed script.
 8. Run the official skill validator when its designated environment and validator are available.
 9. Rerun the live fetch into a fresh source file. Confirm the summary reports `complete: true`, and confirm the dataset stops only after crossing the Shanghai start boundary.

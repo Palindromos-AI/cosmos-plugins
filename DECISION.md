@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-18 — Deliver fix reports through a customer-owned public repository, fix the Python environment to `cosmos`, and license the marketplace as proprietary
+
+- **Clarification:** The marketplace currently serves a single customer. The fix-report channel, the Python environment, and the license are set for that deployment; revisit only if the customer base changes. This supersedes the 2026-08-13 requirement that each stockdata user chooses a micromamba environment.
+- **Context:** The report workflow pushed to a customer-configured remote without saying who reads it, so reports could never reach the maintainer. Skills also named the maintainer's own micromamba environment, and the repository shipped without any license.
+- **Decision:** The customer creates one empty public GitHub repository, shares its URL with the maintainer, and connects `<cosmos-workspace-root>/fix-reports` to it; the maintainer reads reports there. Every Cosmos Skill that runs Python uses exactly the micromamba environment `cosmos` and installs packages only with `uv pip`; no Skill asks the user to choose an environment. The repository carries the Palindromos proprietary license in `LICENSE`. Developer-specific names (environments, planets, vault plugins, development-project package names, other agents' tool names) never appear in distributed files or repository docs.
+- **Context:** Because the report repository is public, the fix-report privacy rules are the only barrier between local details and the internet; they remain mandatory, and the license explicitly permits publishing those sanitized reports, including the Software excerpts or diffs they need. Attribution for third-party-derived Skills is deferred, not decided.
+
 ## 2026-08-18 — Report marketplace changes through a separate user-owned repository
 
 - **Clarification:** Modification reporting applies only to files distributed by the Cosmos Plugins marketplace. External workspaces, runtime configuration, retrieved data, generated output, credentials, and user-owned business scripts are never report triggers. Repository-local maintainer instructions are development policy and are not distributed as runtime policy; caller restrictions on committing the modified source repository do not restrict the separate report-only repository. The three business plugins are independently optional and do not depend on one another; `cosmos-fix-tools` is their required companion.
@@ -9,9 +16,9 @@
 
 ## 2026-08-17 — Target joined Knowledge Planets and keep owner-specific behavior out of the collector
 
-- **Clarification:** Production collection targets planets the user has joined. The self-created `健康星球` is retained only as a PDF-download fixture because the production planet does not permit PDF download.
+- **Clarification:** Production collection targets planets the user has joined. The maintainer's self-created test planet is retained only as a PDF-download fixture because the production planet does not permit PDF download.
 - **Context:** Joined-planet feedback showed that `.info > .date` can have no direct `.readed-count` child. The earlier v4 rule required exactly one because that was the observed structure in the PDF fixture, incorrectly turning a page variant into a production requirement.
-- **Decision:** Add immutable adapter `zsxq-web-angular-v6`, accept zero or one direct read-count child on timeline and detail pages, extract only the timestamp container's owned text, and continue to reject duplicate children. Do not detect or branch on whether the user owns the planet. Keep v1-v5 unchanged for rollback and use `健康星球` only for PDF regression tests.
+- **Decision:** Add immutable adapter `zsxq-web-angular-v6`, accept zero or one direct read-count child on timeline and detail pages, extract only the timestamp container's owned text, and continue to reject duplicate children. Do not detect or branch on whether the user owns the planet. Keep v1-v5 unchanged for rollback and use that test planet only for PDF regression tests.
 - **Context:** The same live run exposed an independent collector-to-runner integration defect. The collector must return the exact runner-ready `{ "topics": [...] }` envelope and integration tests must pass the real collector result into runner normalization.
 
 ## 2026-08-16 — Standardize durable plugin workspaces without giving updates ownership
@@ -38,7 +45,7 @@
 ## 2026-08-15 — Use the official ZSXQ member download before declaring a PDF inaccessible
 
 - **Clarification:** A protected Knowledge Planet PDF may block inline reading while still exposing an official `下载文件` control to signed-in members.
-- **Context:** The live 健康星球 file preview displayed the protection notice and a download button; clicking it emitted a browser download event and produced the complete 763,849-byte PDF. The earlier App-only conclusion was therefore false.
+- **Context:** The live test-planet file preview displayed the protection notice and a download button; clicking it emitted a browser download event and produced the complete 763,849-byte PDF. The earlier App-only conclusion was therefore false.
 - **Decision:** Add immutable adapter `zsxq-web-angular-v5`. Match the exact inventoried topic-local file card and preview filename, require one visible exact download control, capture the official browser download event, and extract the copied local PDF. Declare an access failure only when no official download and no other complete representation exists; never substitute private API reverse engineering.
 - **Context:** This preserves source association and platform access controls while distinguishing viewing restrictions from an allowed member download.
 

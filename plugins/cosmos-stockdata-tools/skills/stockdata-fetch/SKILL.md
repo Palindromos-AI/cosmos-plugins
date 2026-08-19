@@ -28,27 +28,28 @@ Do not copy either reference into the user workspace. Apply only the sections re
 
 Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, mutable dependencies, runtime configuration, credentials, or retrieved data in them. The generic `<skill-dir>/scripts/supermind_runtime.py`, its pinned `requirements.txt`, and the implementation references are versioned, read-only infrastructure and guidance; they are not the user's evolving extraction program.
 
-On first use, collect and confirm these three values together in a single setup:
+On first use, collect and confirm these two values together in a single setup:
 
 1. `<cosmos-workspace-root>`: a user-chosen, durable absolute root shared by the Cosmos plugin family. Derive `<stockdata-workspace>` exactly as `<cosmos-workspace-root>/stockdata`; never accept another child name or an independently chosen stockdata path.
 2. `<token-file>`: a user-chosen absolute file containing that user's own SuperMind token. Keep it outside the workspace and plugin, and require mode `600` on POSIX systems.
-3. `<env>`: the user-chosen micromamba environment name used for all Python work in this workspace.
 
-Never infer any of the three values or read another plugin's binding as a substitute. Never ask for or accept the token content in chat. Persist only schema version, plugin identity, normalized workspace-root and derived workspace paths, token-file path, and environment name in the canonical local per-user metadata file `~/.config/cosmos-stockdata-tools/runtime.json`; the token content must never appear in `runtime.json`. Keep this plugin's configuration separate from `cosmos-sources-tools` even when both record the same root. The configuration is local to one user and machine and stays outside the plugin, marketplace snapshot, and shared workspace root.
+The Python environment is not a choice: every Cosmos plugin runs Python in the micromamba environment `cosmos` and installs packages with `uv pip`. Record `cosmos` as the environment in the binding; do not ask the user for another name.
 
-After the user confirms all three values, validate that the root and token file exist, create only the derived `stockdata/` child when needed, then configure atomically before creating or running business scripts:
+Never infer either value or read another plugin's binding as a substitute. Never ask for or accept the token content in chat. Persist only schema version, plugin identity, normalized workspace-root and derived workspace paths, token-file path, and environment name in the canonical local per-user metadata file `~/.config/cosmos-stockdata-tools/runtime.json`; the token content must never appear in `runtime.json`. Keep this plugin's configuration separate from `cosmos-sources-tools` even when both record the same root. The configuration is local to one user and machine and stays outside the plugin, marketplace snapshot, and shared workspace root.
+
+After the user confirms both values, validate that the root and token file exist, create only the derived `stockdata/` child when needed, then configure atomically before creating or running business scripts:
 
 ```bash
-micromamba run -n <env> python <skill-dir>/scripts/supermind_runtime.py configure \
+micromamba run -n cosmos python <skill-dir>/scripts/supermind_runtime.py configure \
   --workspace-root <absolute-cosmos-workspace-root> \
   --token-file <absolute-token-file> \
-  --micromamba-env <env>
+  --micromamba-env cosmos
 ```
 
 Treat the binding as identity, not as a convenience default:
 
 - Read `runtime.json` at the start of every later task and verify the root, derived workspace, token file, and environment regardless of the current directory.
-- Invoke Python only as `micromamba run -n <env> python ...`; the runtime rejects execution from a different active environment.
+- Invoke Python only as `micromamba run -n cosmos python ...`; the runtime rejects execution from a different active environment.
 - Change the root, workspace, token-file path, or environment only after the user explicitly authorizes reconfiguration. Preserve the old workspace and token file; never move, merge, copy, overwrite, or delete them implicitly. Only then rerun `configure` with `--reconfigure`; the runtime refuses a conflicting replacement without that flag.
 - If request-supplied values conflict with `runtime.json`, stop and show the paths or environment names instead of choosing silently.
 - Require `schema_version` to equal `1`. Reject a missing, unknown, or unsupported schema and stop without using that configuration.
@@ -112,7 +113,7 @@ Record enough provenance to reproduce each dataset:
 Keep SuperMind business logic in `<stockdata-workspace>/scripts/`. Do not copy the generic runtime into the workspace or edit the installed copy. Run a workspace script through the configured per-user token and environment:
 
 ```bash
-micromamba run -n <env> python <skill-dir>/scripts/supermind_runtime.py exec-file \
+micromamba run -n cosmos python <skill-dir>/scripts/supermind_runtime.py exec-file \
   <absolute-workspace-script> --timeout <seconds>
 ```
 
@@ -126,7 +127,7 @@ The runtime is transport infrastructure, not a data contract. Never add fields, 
 
 ## Resolve runtime and credentials at implementation time
 
-Use the environment recorded in `runtime.json`. Install every approved Python package with `micromamba run -n <env> uv pip install ...`; never use bare `pip`, `conda`, or `micromamba install`. Before first SuperMind execution, verify the pinned generic runtime dependency and, if installation is authorized and needed, use `micromamba run -n <env> uv pip install -r <skill-dir>/requirements.txt`. Add a separate workspace-local dependency declaration only when the first business implementation needs it, then maintain it as scripts evolve.
+Use the environment recorded in `runtime.json`. Install every approved Python package with `micromamba run -n cosmos uv pip install ...`; never use bare `pip`, `conda`, or `micromamba install`. Before first SuperMind execution, verify the pinned generic runtime dependency and, if installation is authorized and needed, use `micromamba run -n cosmos uv pip install -r <skill-dir>/requirements.txt`. Add a separate workspace-local dependency declaration only when the first business implementation needs it, then maintain it as scripts evolve.
 
 Use each user's own source accounts and project-specific authentication method. Never ask the user to paste credentials into chat. Never place tokens, cookies, account IDs, or downloaded private data in this skill, source control, examples, persistent logs, published datasets, or output metadata. `configure` and `show-config` may display the confirmed workspace path, token-file path, and environment name only to the current user for local binding verification; these commands must never read or display token content, and their output must not be published or persisted as a run log.
 
@@ -134,7 +135,7 @@ Use each user's own source accounts and project-specific authentication method. 
 
 - Do not recreate or assume the removed full-extraction notebook, runner, workbook validator, fixed sheet set, or fixed coverage thresholds.
 - Keep only generic, immutable SuperMind transport infrastructure and read-only, contract-neutral implementation references in the installed Skill. Never write runtime state, tokens, executable business scripts, fixed business contracts, or retrieved data into the plugin cache or marketplace snapshot.
-- On first use, configure `<cosmos-workspace-root>`, token-file path, and micromamba environment together, derive `<stockdata-workspace>` as `<cosmos-workspace-root>/stockdata`, then persist only the binding metadata externally. On later uses, reuse and verify the complete binding; never infer replacements from the current directory or host environment.
+- On first use, configure `<cosmos-workspace-root>` and the token-file path together with the fixed micromamba environment `cosmos`, derive `<stockdata-workspace>` as `<cosmos-workspace-root>/stockdata`, then persist only the binding metadata externally. On later uses, reuse and verify the complete binding; never infer replacements from the current directory or host environment.
 - Never let marketplace, plugin, or Skill installation or update invoke configuration or alter user-owned runtime metadata, workspace files, credentials, or data.
 - Accept only `runtime.json` with `schema_version` equal to `1`; reject missing, unknown, or unsupported schemas.
 - Begin each user's `<stockdata-workspace>` with no extraction script. Create its `scripts/` for the first requirement, then evolve those existing scripts for every later requirement.

@@ -755,7 +755,7 @@ def load_engine():
     except ImportError as exc:
         raise ConversionError(
             "MarkItDown is unavailable. Install requirements.txt with "
-            "micromamba run -n wiki uv pip."
+            "micromamba run -n cosmos uv pip."
         ) from exc
     return MarkItDown(enable_builtins=True, enable_plugins=False)
 
