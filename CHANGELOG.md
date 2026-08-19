@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A dependency-free `fix-report` writer with slug and CLI validation, canonical containment, symbolic-link rejection, and same-handle exclusive no-clobber writes.
 - Standalone `cosmos-fix-tools` plugin with the `fix-report` Skill, strict packaged-content scope, privacy-safe reports under `<cosmos-workspace-root>/fix-reports`, synchronized-upstream checks, and automatic report-only commit/push without an additional approval gate.
 - Explicit automatic `$fix-report` invocation guidance and missing-plugin handling in every existing marketplace Skill, while excluding changes confined to external workspaces, runtime configuration, generated output, retrieved data, and user-owned business scripts.
 - A shared Cosmos workspace-root convention with independently configured `<root>/sources` and `<root>/stockdata` subtrees, plus a deterministic sources workspace manager, canonical output confinement, and offline binding-safety tests.
@@ -24,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Defined `cosmos-fix-tools` as the mandatory companion for every installed business plugin while keeping the three business plugins independently optional; each Skill now preflights that companion before a packaged modification, and missing-plugin recovery installs or upgrades only it before restarting the repair in a new task.
+- Bumped `cosmos-knowledge-tools` to `0.1.2`, `cosmos-fix-tools` to `0.1.1`, `cosmos-sources-tools` to `0.4.3`, and `cosmos-stockdata-tools` to `0.3.2` for the companion-installation, report-path, and authorization-boundary fixes.
+- Preserved caller Skills' general commit, merge, push, and publish authorization rules while adding one narrow exception for the independently configured report-only commit/push.
 - Bumped `cosmos-knowledge-tools` to `0.1.1`, `cosmos-sources-tools` to `0.4.2`, and `cosmos-stockdata-tools` to `0.3.1` for the marketplace-change reporting handoff.
 - Bumped `cosmos-sources-tools` to `0.4.1`; `zsxq-fetch` now uses the immutable Angular v6 adapter for joined-planet timestamp compatibility.
 - Bumped `cosmos-sources-tools` to `0.4.0`; all four source Skills now require the plugin's durable external sources workspace and keep final reports under its `output/` namespace.
@@ -42,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Made `fix-report` reject unsafe or symbolic-link report paths, require shell-safe validated Git operands, and expose `interface.defaultPrompt` with the specified string-array type.
 - Made the ZSXQ collector return the runner's exact `{ "topics": [...] }` inventory envelope, preventing live collection from failing at `record-inventory` after coverage succeeds.
 - Allowed zero or one direct ZSXQ read-count child while still rejecting duplicates and extracting only the timestamp container's owned text, so joined planets without that node remain collectable.
 - Added the immutable ZSXQ Angular v5 adapter and official UI download workflow so a protected PDF with a visible member download control is downloaded and extracted locally instead of being misreported as App-only.

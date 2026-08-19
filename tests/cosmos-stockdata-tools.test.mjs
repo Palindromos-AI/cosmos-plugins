@@ -140,7 +140,7 @@ test("stockdata plugin metadata describes incremental source extension", async (
   const readme = await read("README.md");
   const changelog = await read("CHANGELOG.md");
 
-  assert.match(manifest.version, /^0\.3\.1(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^0\.3\.2(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   assert.match(manifest.interface.longDescription, /SuperMind[\s\S]*baostock[\s\S]*AKShare/i);
   assert.match(manifest.interface.longDescription, /request|requirement|需求/i);
   assert.match(manifest.interface.longDescription, /external|durable|workspace/i);

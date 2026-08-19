@@ -33,23 +33,32 @@ Writing, committing, or pushing a report inside `fix-reports` never triggers ano
 3. Use exactly `<cosmos-workspace-root>/fix-reports` as the report repository.
 4. Require the user to have created that exact directory, initialized only it as a dedicated Git repository, and completed its user-configured remote, branch, upstream, and authentication setup once before automatic reporting begins.
 5. Run `git -C "<cosmos-workspace-root>/fix-reports" rev-parse --show-toplevel` and require its canonical result to equal exactly `<cosmos-workspace-root>/fix-reports`.
-6. Require an attached current branch and resolve its already configured upstream remote and merge ref. Do not infer or create either value.
+6. Require an attached current branch and resolve its already configured upstream remote and merge ref. Do not infer or create either value. Validate the remote name against `^[A-Za-z0-9][A-Za-z0-9._-]*$`; validate that the merge ref starts with `refs/heads/` and passes `git check-ref-format`.
 7. Run `git -C "<cosmos-workspace-root>/fix-reports" fetch <upstream-remote>`, then run `git -C "<cosmos-workspace-root>/fix-reports" rev-list --left-right --count HEAD...@{upstream}` and require exactly `0 0`. This prevents an earlier local commit or an unseen remote commit from being included in the report push.
 8. Run `git -C "<cosmos-workspace-root>/fix-reports" status --porcelain` and require the report repository to be clean before writing.
+
+Pass every Git operand through an argument-array API when one is available. If the execution tool accepts only a shell command string, shell-quote every dynamic path, remote, ref, revision, and commit message as one data argument. Never concatenate resolved Git values into shell syntax or execute them through `eval`.
 
 Never run `git init` at `<cosmos-workspace-root>` or in `sources/`, `stockdata/`, any parent directory, or any neighboring workspace directory. The user may run `git init "<cosmos-workspace-root>/fix-reports"` only during one-time setup. This skill does not initialize or reconfigure a repository, add or change a remote, switch branches, alter credentials, or choose a hosting provider. If setup is missing, stop and give the user the exact prerequisite; after setup exists, do not request further approval.
 
 ## Confirm the packaged change
 
-Inspect the actual changed files and diff. Do not diagnose from timestamps. Record only paths relative to the marketplace repository or installed plugin root. If the task did not change marketplace-distributed content, stop without creating a report.
+Inspect only the packaged paths changed by the current parent task. Do not diagnose from timestamps or include unrelated working-tree changes. Record paths relative to the marketplace repository or installed plugin root. If a diff cannot be attributed to the current task, omit that diff and record the limitation. If the task did not change marketplace-distributed content, stop without creating a report.
 
 ## Write the report
 
-Create a new file without overwriting an existing report:
+Prepare the complete sanitized Markdown in memory, then send those exact non-empty bytes to the bundled deterministic writer on standard input:
 
-`<cosmos-workspace-root>/fix-reports/<plugin-name>/<skill-or-plugin-scope>/YYYY-MM-DDTHHMMSSZ-<8-hex-id>.md`
+```bash
+node "<skill-dir>/scripts/write-report.mjs" \
+  --repo "<cosmos-workspace-root>/fix-reports" \
+  --plugin "<plugin-name>" \
+  --scope "<skill-or-plugin-scope>"
+```
 
-Use UTC. Use `plugin` for the scope when the change is not limited to one skill.
+Pass the report through the process's standard-input channel, not shell interpolation. The script accepts exactly one `--repo`, `--plugin`, and `--scope` argument, rejects unknown or repeated arguments, accepts lowercase hyphen-separated plugin and scope slugs, rejects traversal and symbolic-link directories, verifies canonical containment, and writes all bytes through the same exclusive no-follow file handle. It uses UTC plus a random eight-hex identifier and never reopens or overwrites the final path.
+
+Use the returned `absolutePath` and `relativePath` as the only report paths. Use `cosmos-plugins` as the plugin name for repository-wide metadata and `plugin` as the scope when the change is not limited to one Skill. Stop on any write failure. Before staging, require the report to remain a regular non-symbolic-link file under the same canonical report repository and require it to be non-empty.
 
 Include:
 

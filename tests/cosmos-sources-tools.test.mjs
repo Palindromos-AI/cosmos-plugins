@@ -167,7 +167,7 @@ test("plugin discovery metadata describes all four packaged source skills", asyn
   ));
   const readme = await read("README.md");
 
-  assert.match(manifest.version, /^0\.4\.2(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+  assert.match(manifest.version, /^0\.4\.3(?:\+codex\.[0-9A-Za-z.-]+)?$/);
   for (const label of ["CLS", "Knowledge Planet", "DingTalk", "Feishu"]) {
     assert.match(manifest.interface.longDescription, new RegExp(label));
   }

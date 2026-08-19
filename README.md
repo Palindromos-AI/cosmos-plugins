@@ -8,13 +8,20 @@ You need GitHub access to `Palindromos-AI/cosmos-plugins` and an SSH key authori
 
 ```bash
 codex plugin marketplace add git@github.com:Palindromos-AI/cosmos-plugins.git --ref main
-codex plugin add cosmos-knowledge-tools@cosmos-plugins
-codex plugin add cosmos-sources-tools@cosmos-plugins
-codex plugin add cosmos-stockdata-tools@cosmos-plugins
 codex plugin add cosmos-fix-tools@cosmos-plugins
 ```
 
+Then install whichever business plugins you need:
+
+```bash
+codex plugin add cosmos-knowledge-tools@cosmos-plugins
+codex plugin add cosmos-sources-tools@cosmos-plugins
+codex plugin add cosmos-stockdata-tools@cosmos-plugins
+```
+
 Restart the ChatGPT desktop app and open a new Codex task after installation.
+
+The three business plugins are independently optional and do not depend on one another. Every installed business plugin must, however, include `cosmos-fix-tools` as its mandatory companion because any Skill that repairs marketplace-distributed content must complete the `$fix-report` handoff.
 
 ## Available plugins
 
@@ -66,16 +73,21 @@ Packages this Skill:
 - `zsxq-fetch` requires Node.js 22.13 or later, the Codex Chrome-control capability, and a Knowledge Planet session already signed in within Chrome. Every requested date and “today” use the Beijing `Asia/Shanghai` boundary rather than the host or browser timezone. Its deterministic runner uses only built-in Node.js APIs; native-pixel image tiling optionally installs the pinned `sharp` dependency from the skill-local lockfile after user approval.
 - `dingding-fetch` and `feishu-fetch` require Node.js, Codex Computer Use, and an existing signed-in DingTalk or Feishu desktop session. At run time they resolve the configured sources workspace, localized app target, display timezone, and Node executable; no developer-machine paths or app identifiers are packaged. They operate read-only, use one frozen Beijing-time cutoff across all requested groups, and keep collected content local.
 - `stockdata-fetch` pins `websocket-client==1.8.0` for its generic SuperMind runtime and bundles read-only, contract-neutral implementation references. On first use, each user chooses `<cosmos-workspace-root>`, a personal SuperMind token-file absolute path, and a micromamba environment together; the runtime derives `<cosmos-workspace-root>/stockdata`. Its separate `~/.config/cosmos-stockdata-tools/runtime.json` stores only schema-1 binding metadata—never token content—and later calls reuse it regardless of the current directory. Python commands use `micromamba run -n <env>` and approved package installation uses `uv pip`. Reconfiguration requires explicit authorization; missing or unsupported configuration schemas are rejected. Executable business scripts, accepted data contracts, credentials, mutable dependencies, and downloaded data remain outside the plugin.
-- `fix-report` uses exactly `<cosmos-workspace-root>/fix-reports`. During one-time setup, each user must run `git init "<cosmos-workspace-root>/fix-reports"`, establish its initial branch/upstream baseline, and configure that repository's remote and authentication. Never initialize `<cosmos-workspace-root>` itself or any other workspace subtree. After setup, the Skill automatically commits and pushes reports by running every Git command explicitly against `fix-reports`; it never initializes or reconfigures a repository and never commits or pushes the modified marketplace source repository.
+- `fix-report` requires Node.js and uses exactly `<cosmos-workspace-root>/fix-reports`. During one-time setup, each user must run `git init "<cosmos-workspace-root>/fix-reports"`, establish its initial branch/upstream baseline, and configure that repository's remote and authentication. Never initialize `<cosmos-workspace-root>` itself or any other workspace subtree. The bundled writer rejects traversal and symbolic-link directories and writes standard-input bytes through one exclusive, canonically confined file handle. After setup, the Skill automatically commits and pushes reports by running every Git command explicitly against `fix-reports`; it never initializes or reconfigures a repository and never commits or pushes the modified marketplace source repository.
 
-Marketplace, plugin, and Skill upgrades replace capability code only. They never invoke workspace configuration or own, migrate, overwrite, or delete either plugin's external `runtime.json` or user workspace content.
+Marketplace, plugin, and Skill upgrades replace capability code only. They never invoke workspace configuration or own, migrate, overwrite, or delete the sources or stockdata plugin's external `runtime.json` or user workspace content.
 
 ## Update
 
 ```bash
 codex plugin marketplace upgrade cosmos-plugins
+codex plugin add cosmos-fix-tools@cosmos-plugins
+```
+
+Re-add only the business plugins you use:
+
+```bash
 codex plugin add cosmos-knowledge-tools@cosmos-plugins
 codex plugin add cosmos-sources-tools@cosmos-plugins
 codex plugin add cosmos-stockdata-tools@cosmos-plugins
-codex plugin add cosmos-fix-tools@cosmos-plugins
 ```

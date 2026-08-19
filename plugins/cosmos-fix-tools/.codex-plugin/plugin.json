@@ -1,6 +1,6 @@
 {
   "name": "cosmos-fix-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Automatically record, commit, and push sanitized reports for changes to Cosmos marketplace content.",
   "author": {
     "name": "Jason"
@@ -15,6 +15,8 @@
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
-    "defaultPrompt": "Use $fix-report to automatically record and push a sanitized report for a Cosmos marketplace content change."
+    "defaultPrompt": [
+      "Use $fix-report to automatically record and push a sanitized report for a Cosmos marketplace content change."
+    ]
   }
 }

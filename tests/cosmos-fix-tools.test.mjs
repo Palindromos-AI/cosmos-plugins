@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+} from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,9 +30,12 @@ test("cosmos-fix-tools packages the fix-report skill", async () => {
   );
 
   assert.equal(manifest.name, "cosmos-fix-tools");
-  assert.equal(manifest.version, "0.1.0");
+  assert.equal(manifest.version, "0.1.1");
   assert.equal(manifest.skills, "./skills/");
   assert.equal(manifest.repository, "https://github.com/Palindromos-AI/cosmos-plugins");
+  assert.deepEqual(manifest.interface.defaultPrompt, [
+    "Use $fix-report to automatically record and push a sanitized report for a Cosmos marketplace content change.",
+  ]);
   assert.match(skill, /^name: fix-report$/m);
   assert.match(skill, /^description: /m);
   assert.match(skill, /marketplace/i);
@@ -95,6 +108,111 @@ test("fix-report writes to a dedicated report repository and pushes", async () =
   assert.doesNotMatch(skill, /git -C [^\n]*fix-reports[^\n]*push <upstream-remote> HEAD:/);
   assert.match(skill, /non-zero exit|fails|failure/i);
   assert.match(skill, /token|cookie|signed URL|private source content/i);
+  assert.match(skill, /argument array|shell-quote|shell-safe/i);
+  assert.match(skill, /validate[^\n]*(?:remote|ref)|(?:remote|ref)[^\n]*validate/i);
+});
+
+test("fix-report writes only confined, non-symlink report paths", async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cosmos-fix-report-test-"));
+  t.after(() => rm(tempRoot, { recursive: true, force: true }));
+
+  const canonicalTempRoot = await realpath(tempRoot);
+  const reportRepo = path.join(canonicalTempRoot, "fix-reports");
+  await mkdir(reportRepo);
+  const scriptPath = path.join(
+    repoRoot,
+    "plugins/cosmos-fix-tools/skills/fix-report/scripts/write-report.mjs",
+  );
+  const scriptUrl = pathToFileURL(scriptPath).href;
+  const { writeReport } = await import(scriptUrl);
+
+  const reserved = await writeReport({
+    repo: reportRepo,
+    plugin: "cosmos-fix-tools",
+    scope: "fix-report",
+    timestamp: "2026-08-18T120000Z",
+    id: "deadbeef",
+    content: "report body\n",
+  });
+  assert.equal(
+    reserved.relativePath,
+    "cosmos-fix-tools/fix-report/2026-08-18T120000Z-deadbeef.md",
+  );
+  assert.equal(await readFile(reserved.absolutePath, "utf8"), "report body\n");
+  await assert.rejects(
+    writeReport({
+      repo: reportRepo,
+      plugin: "cosmos-fix-tools",
+      scope: "fix-report",
+      timestamp: "2026-08-18T120000Z",
+      id: "deadbeef",
+      content: "replacement\n",
+    }),
+    /exist|reserved/i,
+  );
+
+  for (const invalidComponent of ["../stockdata", "fix/report", "fix report", "$(touch-marker)"]) {
+    await assert.rejects(
+      writeReport({
+        repo: reportRepo,
+        plugin: invalidComponent,
+        scope: "plugin",
+        timestamp: "2026-08-18T120001Z",
+        id: "feedface",
+        content: "report body\n",
+      }),
+      /plugin/i,
+    );
+  }
+
+  const outside = path.join(tempRoot, "outside");
+  await mkdir(outside);
+  await symlink(outside, path.join(reportRepo, "cosmos-sources-tools"));
+  await assert.rejects(
+    writeReport({
+      repo: reportRepo,
+      plugin: "cosmos-sources-tools",
+      scope: "plugin",
+      timestamp: "2026-08-18T120002Z",
+      id: "cafebabe",
+      content: "report body\n",
+    }),
+    /symbolic link|symlink/i,
+  );
+
+  for (const invalidArgs of [
+    ["--repo", reportRepo, "--plugin", "cosmos-fix-tools", "--scope", "plugin", "--unknown", "value"],
+    ["--repo", reportRepo, "--repo", reportRepo, "--plugin", "cosmos-fix-tools", "--scope", "plugin"],
+  ]) {
+    const result = spawnSync(process.execPath, [scriptPath, ...invalidArgs], {
+      encoding: "utf8",
+      input: "report body\n",
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown|duplicate/i);
+  }
+});
+
+test("existing skills scope source-repository authorization separately from fix reports", async () => {
+  for (const relativePath of [
+    "plugins/cosmos-sources-tools/skills/cls-fetch/SKILL.md",
+    "plugins/cosmos-sources-tools/skills/zsxq-fetch/SKILL.md",
+    "plugins/cosmos-stockdata-tools/skills/stockdata-fetch/SKILL.md",
+  ]) {
+    const skill = await read(relativePath);
+    const authorizationLines = skill.split("\n").filter(
+      (line) => /\b(?:Do not|Never) commit\b/i.test(line),
+    );
+    assert.ok(authorizationLines.length > 0, `${relativePath} has no source authorization rule`);
+    for (const line of authorizationLines) {
+      assert.match(line, /commit, merge, (?:or )?push/i);
+      assert.match(line, /\bpublish\b/i);
+      assert.doesNotMatch(line, /publish marketplace/i);
+      assert.match(line, /authorization|authorizes/i);
+      assert.match(line, /sole exception/i);
+      assert.match(line, /report-only/i);
+    }
+  }
 });
 
 test("every existing marketplace skill requires fix-report for packaged changes", async () => {
@@ -126,7 +244,17 @@ test("every existing marketplace skill requires fix-report for packaged changes"
       assert.match(skill, /distributed|packaged/i);
       assert.match(skill, /external workspace/i);
       assert.match(skill, /cosmos-fix-tools@cosmos-plugins/);
+      assert.doesNotMatch(skill, /complete supported set/i);
       assert.match(skill, /unavailable/i);
+      assert.match(
+        skill,
+        /before (?:changing|modifying) any marketplace-distributed file, confirm `?\$fix-report`? is available/i,
+      );
+      assert.match(skill, /stop before modifying packaged content/i);
+      assert.match(skill, /restart (?:the )?(?:ChatGPT desktop|app)/i);
+      assert.match(skill, /new (?:Codex )?task/i);
+      assert.match(skill, /repeat the repair from the beginning/i);
+      assert.match(skill, /do not resume|never resume/i);
       assert.match(skill, /automatic/i);
       assert.match(skill, /without additional (?:approval|confirmation)/i);
     }
@@ -146,4 +274,49 @@ test("marketplace exposes cosmos-fix-tools as a local plugin", async () => {
     authentication: "ON_INSTALL",
   });
   assert.equal(entry?.category, "Productivity");
+});
+
+test("marketplace documents the mandatory fix companion contract", async () => {
+  const readme = await read("README.md");
+  const architecture = await read("ARCHITECTURE.md");
+  const decisions = await read("DECISION.md");
+  const changelog = await read("CHANGELOG.md");
+  const marketplace = JSON.parse(await read(".agents/plugins/marketplace.json"));
+  const knowledgeManifest = JSON.parse(await read(
+    "plugins/cosmos-knowledge-tools/.codex-plugin/plugin.json",
+  ));
+  const expectedPlugins = [
+    "cosmos-fix-tools",
+    "cosmos-knowledge-tools",
+    "cosmos-sources-tools",
+    "cosmos-stockdata-tools",
+  ];
+
+  for (const document of [readme, architecture, decisions]) {
+    assert.match(document, /cosmos-fix-tools[^\n]*(?:required|mandatory)[^\n]*companion/i);
+    assert.match(document, /business plugins?[^\n]*(?:independently optional|do not depend on (?:one )?another)/i);
+    assert.doesNotMatch(document, /(?:all four plugins|four-plugin)[^\n]*(?:required|supported|installation|deployment)/i);
+    assert.doesNotMatch(document, /subset installations? (?:are|is) not supported/i);
+  }
+  assert.match(changelog, /cosmos-fix-tools[^\n]*mandatory companion/i);
+  assert.doesNotMatch(changelog, /complete-installation|full-set|four-plugin/i);
+  assert.deepEqual(
+    marketplace.plugins.map(({ name }) => name).sort(),
+    expectedPlugins,
+  );
+  assert.match(knowledgeManifest.version, /^0\.1\.2(?:\+codex\.[0-9A-Za-z.-]+)?$/);
+
+  const installCommands = [...readme.matchAll(
+    /^codex plugin add (cosmos-[a-z-]+)@cosmos-plugins$/gm,
+  )].map((match) => match[1]);
+  assert.deepEqual([...new Set(installCommands)].sort(), expectedPlugins);
+
+  const zsxqSkill = await read(
+    "plugins/cosmos-sources-tools/skills/zsxq-fetch/SKILL.md",
+  );
+  const runnerContract = await read(
+    "plugins/cosmos-sources-tools/skills/zsxq-fetch/references/runner-contract.md",
+  );
+  assert.doesNotMatch(zsxqSkill, /independently installed skill/i);
+  assert.doesNotMatch(runnerContract, /independently copied skill/i);
 });

@@ -14,7 +14,7 @@
 
 Create a private temporary parent directory, choose a child path that does not yet exist, and let `init` atomically create that run workspace. Every requested date is an `Asia/Shanghai` (`UTC+08:00`) calendar day from Beijing midnight to Beijing midnight; when no date is explicit, use `currentBeijingDate()` from `scripts/zsxq-time.mjs` rather than deriving “today” from the host, browser, user-location, or publisher timezone. Requires Node.js 22.13 or later, the first 22.x release where the built-in SQLite API used for crash-safe process locking no longer needs an experimental startup flag.
 
-Ordinary runner commands do not load third-party packages. Tiled image analysis alone needs the pinned local Sharp runtime. In an independently copied skill, install it once before the first tile operation (with user approval when network access is required):
+Ordinary runner commands do not load third-party packages. Tiled image analysis alone needs the pinned local Sharp runtime. In the installed `cosmos-sources-tools` plugin, install it once in the installed `zsxq-fetch` directory before the first tile operation (with user approval when network access is required):
 
 ```bash
 npm install --omit=dev --prefix /absolute/path/to/zsxq-fetch

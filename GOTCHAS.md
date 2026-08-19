@@ -1,10 +1,10 @@
 # Gotchas
 
-## A fix report can accidentally capture external workspace state or push source code
+## A fix report can escape its repository, capture unrelated state, or push source code
 
-- **Symptom:** A report is generated for ordinary user data changes, contains private local content, or a repair workflow pushes the modified marketplace source repository.
-- **Root cause:** The reporting boundary was inferred from the active task instead of the changed packaged paths, the report repository and source repository were treated as one Git operation, or an unqualified `git push` carried earlier commits or other configured branches.
-- **How to avoid:** Invoke `fix-report` only for marketplace-distributed files, exclude every external workspace and runtime artifact, initialize only `<cosmos-workspace-root>/fix-reports`, run every Git command explicitly against that directory, redact private content and absolute paths, require a clean synchronized report repository, verify the report path, parent, and blob before and after the automatic commit, push the verified commit hash to the preverified upstream branch, and never commit or push the source repository.
+- **Symptom:** A report is generated for ordinary user data changes, lands outside `fix-reports`, contains unrelated local content, or a repair workflow pushes the modified marketplace source repository.
+- **Root cause:** The reporting boundary was inferred from the active task instead of its changed packaged paths, report components were concatenated without traversal or symbolic-link checks, dynamic Git operands were treated as shell syntax, or the report repository and source repository were treated as one Git operation.
+- **How to avoid:** Preflight `fix-report` before modifying marketplace-distributed files so a missing companion stops before any unattributable change; invoke it only for packaged files changed by the current parent task, write every report through `write-report.mjs` standard input and its single exclusive handle, exclude every external workspace and runtime artifact, initialize only `<cosmos-workspace-root>/fix-reports`, validate and shell-quote every dynamic Git operand, require a clean synchronized report repository, verify the report path and blob before and after the automatic commit, push the verified commit hash to the preverified upstream branch, and never commit or push the modified marketplace source repository. The only authorization exception is the separately scoped report-only commit.
 
 ## A collector result can be semantically correct but use the wrong runner envelope
 
