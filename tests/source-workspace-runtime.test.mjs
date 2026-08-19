@@ -235,3 +235,21 @@ test("CLS and ZSXQ writers enforce the configured sources workspace", async (t) 
   );
   await assert.rejects(stat(runWorkspace), /ENOENT/);
 });
+
+
+test("sources runtime rejects OS temporary roots even when they resolve through symlinks", async (t) => {
+  // Deliberately do NOT override `temporaryRoots`: this exercises the default
+  // list, which on macOS contains `/var/...` paths that realpath to `/private/var/...`.
+  const context = await fixture(t);
+  const workspaceRoot = path.join(context.root, "cosmos-workspace");
+  await mkdir(workspaceRoot, { recursive: true });
+
+  await assert.rejects(
+    configureRuntime({
+      workspaceRoot,
+      configFile: context.configFile,
+      pluginRoot: context.pluginRoot,
+    }),
+    /outside OS temporary directories/,
+  );
+});

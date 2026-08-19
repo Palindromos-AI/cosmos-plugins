@@ -1,5 +1,11 @@
 # Gotchas
 
+## A CLI invoked through a symbolic link exits 0 and does nothing
+
+- **Symptom:** `node <symlinked-dir>/scripts/<tool>.mjs ...` prints nothing and exits 0; the same command through the real path works. Codex's own plugin cache and user checkouts can be symlinked.
+- **Root cause:** The "run as main module" guard compared `process.argv[1]` (kept exactly as typed) with `import.meta.url` (which Node resolves through symbolic links), so the script decided it was being imported as a library.
+- **How to avoid:** Every entry guard uses the shared `isMainModule()` shape: accept the entry if either the typed `process.argv[1]` or its `realpathSync` result matches the module's own path (compared in path space via `fileURLToPath`, or in URL space via `pathToFileURL`, whichever the file already imports; accepting both forms also keeps `--preserve-symlinks-main` working). `tests/cli-entry-points.test.mjs` runs every CLI through a symlinked directory and must stay in sync when a CLI is added. Apply the same rule to any path comparison: compare canonical with canonical (see the sources temporary-root check).
+
 ## Maintainer-machine names leak into distributed files and repository docs
 
 - **Symptom:** A customer's Codex is told to run Python in an environment named after the maintainer's own vault, to prefer Defuddle over another agent product's fetch tool, to archive the maintainer's own Knowledge Planet by name, or to skip a specific vault plugin—none of which exist on the customer's machine—and repository docs cloned by `codex plugin marketplace add` name the maintainer's private planet.

@@ -29,7 +29,7 @@ This repository is the `cosmos-plugins` Codex marketplace. It packages reusable 
   - `skills/fix-report/SKILL.md`: Scope classifier, privacy rules, report format, and automatic report-only Git commit/push workflow. Every Git command explicitly targets the user-managed `<cosmos-workspace-root>/fix-reports` repository, whose remote is a public repository owned by the user and watched by the maintainer; the shared root and all other external workspace content remain outside its Git boundary.
   - `skills/fix-report/scripts/write-report.mjs`: Dependency-free Node.js writer that validates report slugs and CLI arguments, rejects traversal and symbolic-link directories, verifies canonical containment, and writes standard-input bytes through one exclusive no-follow file handle.
   - `skills/fix-report/agents/openai.yaml`: UI metadata and invocation prompt.
-- `tests/`: Marketplace/plugin integration tests covering packaged skill discovery and catalog wiring.
+- `tests/`: Marketplace/plugin integration tests covering packaged skill discovery, catalog wiring, and CLI entry-point behavior through symlinked paths.
 - `README.md`: Installation, available-plugin, runtime, update, and license guidance.
 - `LICENSE`: Proprietary customer license for the marketplace; third-party-derived portions stay under their own licenses.
 

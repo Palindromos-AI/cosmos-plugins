@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -108,10 +109,22 @@ export async function beginRepair(options) {
   return result("repair-limit-reached", runId);
 }
 
-const isCli = process.argv[1]
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// Resolve the invoked path before comparing: Node resolves `import.meta.url`
+// through symbolic links but leaves `process.argv[1]` as typed.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let resolved = path.resolve(entry);
+  try {
+    resolved = realpathSync(resolved);
+  } catch {
+    // keep the unresolved path; the comparison below still decides
+  }
+  const self = fileURLToPath(import.meta.url);
+  return path.resolve(entry) === self || resolved === self;
+}
 
-if (isCli) {
+if (isMainModule()) {
   const [command, statePath, runId, failureCode, phase] = process.argv.slice(2);
   try {
     if (command !== "begin") {

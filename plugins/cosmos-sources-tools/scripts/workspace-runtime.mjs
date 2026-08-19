@@ -10,6 +10,7 @@ import {
   rename,
   rm,
 } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -84,7 +85,13 @@ async function validateWorkspaceRoot(
 ) {
   const requested = requireAbsolute(workspaceRoot, "workspace root");
   const canonical = await requireRealDirectory(requested, "workspace root");
-  if (temporaryRoots.some((root) => isInside(canonical, root))) {
+  // Compare canonical against canonical: on macOS `os.tmpdir()` and `/var/tmp`
+  // resolve to `/private/var/...`, so an unresolved temporary root never
+  // matches a realpath'd workspace root.
+  const canonicalTemporaryRoots = await Promise.all(
+    temporaryRoots.map((root) => realpath(root).catch(() => root)),
+  );
+  if (canonicalTemporaryRoots.some((root) => isInside(canonical, root))) {
     throw new WorkspaceRuntimeError(
       "workspace root must be durable and outside OS temporary directories",
     );
@@ -342,7 +349,22 @@ async function main(argv) {
 }
 
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Resolve the invoked path before comparing: Node resolves `import.meta.url`
+// through symbolic links but leaves `process.argv[1]` as typed.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let resolved = path.resolve(entry);
+  try {
+    resolved = realpathSync(resolved);
+  } catch {
+    // keep the unresolved path; the comparison below still decides
+  }
+  const self = fileURLToPath(import.meta.url);
+  return path.resolve(entry) === self || resolved === self;
+}
+
+if (isMainModule()) {
   main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`error: ${error.message}\n`);
     process.exitCode = 1;

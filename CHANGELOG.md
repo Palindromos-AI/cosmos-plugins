@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-fix-tools` to `0.1.3` and `cosmos-sources-tools` to `0.4.5` for the symlinked CLI entry-point, temporary-root, and canonical-path fixes.
 - Bumped `cosmos-fix-tools` to `0.1.2`, `cosmos-knowledge-tools` to `0.1.3`, `cosmos-sources-tools` to `0.4.4`, and `cosmos-stockdata-tools` to `0.3.3` for the report-channel, fixed-environment, and developer-reference cleanup.
 - Fixed every Python-running Skill (`llm-wiki`, `raw-to-markdown`, `stockdata-fetch`) to the micromamba environment `cosmos` with `uv pip`; `stockdata-fetch` no longer asks the user to choose an environment and records `cosmos` in its binding.
 - `fix-report` now states that the report remote is a public repository owned by the user and read by the maintainer, and its missing-setup message lists the exact setup commands.
@@ -54,6 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Made all 13 packaged CLI entry points recognize themselves when invoked through a symbolic-link path: the entry guard now compares the realpath of `process.argv[1]` with `import.meta.url` instead of exiting 0 silently. Added `tests/cli-entry-points.test.mjs`, which runs every CLI both directly and through a symlinked directory.
+- Made the sources workspace manager compare canonical temporary roots, so on macOS a workspace root under `os.tmpdir()` (`/var/folders/...` → `/private/var/...`) or `/var/tmp` is rejected as originally intended; the test suite now exercises the default temporary-root list.
+- Made `write-report.mjs` accept a report repository whose ancestor is a symbolic link (macOS `/tmp`, synced folders) and use the canonical path, while still rejecting a symlinked `fix-reports` directory itself; the `fix-report` SKILL step 5 now treats Git's canonical top-level path as authoritative.
 - Made `fix-report` reject unsafe or symbolic-link report paths, require shell-safe validated Git operands, and expose `interface.defaultPrompt` with the specified string-array type.
 - Made the ZSXQ collector return the runner's exact `{ "topics": [...] }` inventory envelope, preventing live collection from failing at `record-inventory` after coverage succeeds.
 - Allowed zero or one direct ZSXQ read-count child while still rejecting duplicates and extracting only the timestamp container's owned text, so joined planets without that node remain collectable.

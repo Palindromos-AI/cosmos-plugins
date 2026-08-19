@@ -1,6 +1,6 @@
 {
   "name": "cosmos-sources-tools",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Fetch, verify, and locally archive daily source content from CLS, Knowledge Planet, DingTalk, and Feishu.",
   "author": {
     "name": "Jason"

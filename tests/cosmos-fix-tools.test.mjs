@@ -191,6 +191,38 @@ test("fix-report writes only confined, non-symlink report paths", async (t) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /unknown|duplicate/i);
   }
+
+  // A symbolic-link ancestor (macOS `/tmp` -> `/private/tmp`, synced folders)
+  // is accepted and the returned path is canonical; the report repository
+  // directory itself may still not be a symbolic link.
+  const linkedParent = path.join(canonicalTempRoot, "linked-parent");
+  await symlink(canonicalTempRoot, linkedParent, "dir");
+  const viaLinkedParent = await writeReport({
+    repo: path.join(linkedParent, "fix-reports"),
+    plugin: "cosmos-fix-tools",
+    scope: "fix-report",
+    timestamp: "2026-08-18T120003Z",
+    id: "0badf00d",
+    content: "report body\n",
+  });
+  assert.equal(
+    viaLinkedParent.absolutePath,
+    path.join(reportRepo, "cosmos-fix-tools/fix-report/2026-08-18T120003Z-0badf00d.md"),
+  );
+
+  const linkedRepo = path.join(canonicalTempRoot, "linked-repo");
+  await symlink(reportRepo, linkedRepo, "dir");
+  await assert.rejects(
+    writeReport({
+      repo: linkedRepo,
+      plugin: "cosmos-fix-tools",
+      scope: "fix-report",
+      timestamp: "2026-08-18T120004Z",
+      id: "0badf00e",
+      content: "report body\n",
+    }),
+    /symbolic link/i,
+  );
 });
 
 test("existing skills scope source-repository authorization separately from fix reports", async () => {

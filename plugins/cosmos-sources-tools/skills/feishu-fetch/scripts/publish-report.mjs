@@ -2,6 +2,7 @@
 
 // Publish verified feishu-fetch report artifacts without clobbering.
 
+import { realpathSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { link, lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -117,10 +118,22 @@ export async function publishReport({
   return target;
 }
 
-const isCli = process.argv[1]
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// Resolve the invoked path before comparing: Node resolves `import.meta.url`
+// through symbolic links but leaves `process.argv[1]` as typed.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let resolved = path.resolve(entry);
+  try {
+    resolved = realpathSync(resolved);
+  } catch {
+    // keep the unresolved path; the comparison below still decides
+  }
+  const self = fileURLToPath(import.meta.url);
+  return path.resolve(entry) === self || resolved === self;
+}
 
-if (isCli) {
+if (isMainModule()) {
   const [draftPath, targetPath, expectedSha256] = process.argv.slice(2);
   try {
     const publishedPath = await publishReport({ draftPath, targetPath, expectedSha256 });

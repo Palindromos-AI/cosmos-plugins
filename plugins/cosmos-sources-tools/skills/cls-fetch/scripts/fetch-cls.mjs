@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -383,7 +384,22 @@ async function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Resolve the invoked path before comparing: Node resolves `import.meta.url`
+// through symbolic links but leaves `process.argv[1]` as typed.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let resolved = entry;
+  try {
+    resolved = realpathSync(entry);
+  } catch {
+    // keep the unresolved path; the comparison below still decides
+  }
+  return import.meta.url === pathToFileURL(entry).href
+    || import.meta.url === pathToFileURL(resolved).href;
+}
+
+if (isMainModule()) {
   main().catch((error) => {
     process.stderr.write(`cls-fetch: ${formatCliError(error)}\n`);
     process.exitCode = 1;

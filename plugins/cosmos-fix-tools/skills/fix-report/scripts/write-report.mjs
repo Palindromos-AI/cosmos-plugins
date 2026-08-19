@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -29,6 +29,11 @@ function utcTimestamp(now = new Date()) {
   return `${iso.slice(0, 10)}T${iso.slice(11, 19).replaceAll(":", "")}Z`;
 }
 
+// The directory itself must be a real directory (never a symbolic link), but
+// symbolic-link ancestors such as macOS `/tmp` -> `/private/tmp` or a synced
+// folder are accepted; every later operation uses the canonical path. The
+// final comparison re-checks the leaf after `realpath`, so a directory swapped
+// for a symbolic link between `lstat` and `realpath` is still rejected.
 async function requireCanonicalDirectory(directory, label) {
   const stats = await lstat(directory);
   if (stats.isSymbolicLink()) {
@@ -38,8 +43,12 @@ async function requireCanonicalDirectory(directory, label) {
     throw new Error(`${label} must be a directory`);
   }
   const canonical = await realpath(directory);
-  if (canonical !== path.resolve(directory)) {
-    throw new Error(`${label} must use its canonical path`);
+  const expected = path.join(
+    await realpath(path.dirname(directory)),
+    path.basename(directory),
+  );
+  if (canonical !== expected) {
+    throw new Error(`${label} must not be a symbolic link`);
   }
   return canonical;
 }
@@ -170,7 +179,22 @@ async function main() {
   process.stdout.write(`${JSON.stringify(report)}\n`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+// Resolve the invoked path before comparing: Node resolves `import.meta.url`
+// through symbolic links but leaves `process.argv[1]` as typed.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let resolved = path.resolve(entry);
+  try {
+    resolved = realpathSync(resolved);
+  } catch {
+    // keep the unresolved path; the comparison below still decides
+  }
+  const self = fileURLToPath(import.meta.url);
+  return path.resolve(entry) === self || resolved === self;
+}
+
+if (isMainModule()) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

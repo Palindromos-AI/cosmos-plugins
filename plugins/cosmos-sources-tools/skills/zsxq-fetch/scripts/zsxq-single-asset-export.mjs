@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { link, rm, stat, writeFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
@@ -182,10 +183,22 @@ async function main(argv) {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-if (
-  typeof process !== "undefined"
-  && import.meta.url === pathToFileURL(process.argv[1] ?? "").href
-) {
+// Resolve the invoked path before comparing: Node resolves `import.meta.url`
+// through symbolic links but leaves `process.argv[1]` as typed.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let resolved = entry;
+  try {
+    resolved = realpathSync(entry);
+  } catch {
+    // keep the unresolved path; the comparison below still decides
+  }
+  return import.meta.url === pathToFileURL(entry).href
+    || import.meta.url === pathToFileURL(resolved).href;
+}
+
+if (isMainModule()) {
   main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;
