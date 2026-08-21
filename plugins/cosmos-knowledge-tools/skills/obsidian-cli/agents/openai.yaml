@@ -1,0 +1,4 @@
+interface:
+  display_name: "Obsidian CLI"
+  short_description: "通过 Obsidian CLI 读取、搜索和管理 vault 中的笔记"
+  default_prompt: "使用 $obsidian-cli 操作我的 Obsidian vault。"

@@ -171,7 +171,7 @@ class RawToMarkdownComprehensiveTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "load_engine", return_value=MutatingEngine()),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
         ):
             results, exit_code = MODULE.run_convert(
@@ -194,7 +194,7 @@ class RawToMarkdownComprehensiveTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "load_engine", return_value=EmptyEngine()),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
         ):
             results, exit_code = MODULE.run_convert(
@@ -220,7 +220,7 @@ class RawToMarkdownComprehensiveTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "load_engine", return_value=Engine()),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
         ):
             results, exit_code = MODULE.run_convert(
@@ -342,7 +342,7 @@ class RawToMarkdownComprehensiveTests(unittest.TestCase):
                 MODULE, "load_engine", return_value=PartlyFailingEngine()
             ),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
         ):
             results, exit_code = MODULE.run_convert(

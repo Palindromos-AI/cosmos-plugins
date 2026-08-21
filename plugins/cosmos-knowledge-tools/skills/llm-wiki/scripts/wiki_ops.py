@@ -30,12 +30,18 @@ ENTITY_TAGS = {"person", "organization", "project", "product", "event", "place",
 CONCEPT_TAGS = {"theory", "method", "field", "phenomenon", "standard", "term", "other"}
 SOURCE_TAGS = {"paper", "article", "book", "transcript", "clippings", "notes", "other"}
 CONTENT_DIRS = ("entities", "concepts", "sources")
-IGNORED_SOURCE_PARTS = {".obsidian", ".agents", ".git"}
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]")
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
+ATTACHMENT_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif",
+    ".pdf", ".canvas", ".base",
+    ".mp3", ".wav", ".m4a", ".ogg", ".flac",
+    ".mp4", ".mov", ".webm", ".mkv", ".ogv", ".3gp",
+    ".zip", ".csv", ".json", ".xlsx", ".docx", ".pptx",
+}
 
 
 @dataclass
@@ -69,7 +75,14 @@ def fnv1a(text: str) -> int:
     return value
 
 
+def has_hidden_part(parts: Iterable[str]) -> bool:
+    # `.trash`, `.obsidian`, `.smart-env`, and every other dot directory hold
+    # deleted or tool-managed files, never source notes.
+    return any(part.startswith(".") for part in parts)
+
+
 def split_frontmatter(content: str) -> tuple[dict[str, Any], str]:
+    content = content.removeprefix("\ufeff")
     match = FRONTMATTER_RE.match(content)
     if not match:
         return {}, content
@@ -99,10 +112,15 @@ def parse_frontmatter(raw: str) -> dict[str, Any]:
         j = i + 1
         while j < len(lines):
             candidate = lines[j]
-            match = re.match(r"^\s+-\s*(.*?)\s*$", candidate)
+            # Accept column-0 sequence items: `- item` without indentation is
+            # valid YAML and what Obsidian and other tools commonly write.
+            # YAML requires whitespace after the dash (or a lone dash for a
+            # null item); a glued `-5` is not a sequence item and must not be
+            # read as `5` with its sign dropped.
+            match = re.match(r"^\s*-(?:\s+(.*?))?\s*$", candidate)
             if not match:
                 break
-            items.append(parse_scalar(match.group(1)))
+            items.append(parse_scalar(match.group(1) or ""))
             j += 1
         result[key] = items if items else ""
         i = j
@@ -258,11 +276,19 @@ def all_markdown_files(root: Path) -> list[Path]:
             rel = path.relative_to(root)
         except ValueError:
             continue
-        if any(part in {".git"} for part in rel.parts):
+        if has_hidden_part(rel.parts):
             continue
         if path.is_file():
             results.append(path)
     return sorted(results)
+
+
+def strip_link_markup(text: str) -> str:
+    # Summaries are rendered into the index and query results; raw embed and
+    # wikilink markup there is noise, so keep only the display text.
+    text = re.sub(r"!\[\[[^\]]*\]\]", "", text)
+    text = WIKILINK_RE.sub(lambda m: (m.group(2) or m.group(1)).strip(), text)
+    return normalize_ws(text)
 
 
 def first_summary(body: str, page_type: str) -> str:
@@ -276,11 +302,11 @@ def first_summary(body: str, page_type: str) -> str:
         if normalize_text(heading) in {normalize_text(x) for x in preferred}:
             paragraph = first_paragraph(text)
             if paragraph:
-                return paragraph[:500]
+                return strip_link_markup(paragraph)[:500]
     for _, text in sections:
         paragraph = first_paragraph(text)
         if paragraph:
-            return paragraph[:500]
+            return strip_link_markup(paragraph)[:500]
     return ""
 
 
@@ -305,7 +331,11 @@ def first_paragraph(text: str) -> str:
     return ""
 
 
-def load_pages(root: Path, wiki_folder: str) -> list[Page]:
+def load_pages(
+    root: Path,
+    wiki_folder: str,
+    unreadable: list[dict[str, str]] | None = None,
+) -> list[Page]:
     pages: list[Page] = []
     wiki_root = root / wiki_folder
     for directory in CONTENT_DIRS:
@@ -314,7 +344,19 @@ def load_pages(root: Path, wiki_folder: str) -> list[Page]:
         if not folder.exists():
             continue
         for path in sorted(folder.rglob("*.md")):
-            content = read_text(path)
+            if has_hidden_part(path.relative_to(wiki_root).parts):
+                continue
+            try:
+                content = read_text(path)
+            except UnicodeDecodeError as exc:
+                # One undecodable page must not abort the whole command; record
+                # its path so the caller can surface it.
+                if unreadable is not None:
+                    unreadable.append({
+                        "file": path.relative_to(root).as_posix(),
+                        "error": str(exc),
+                    })
+                continue
             frontmatter, body = split_frontmatter(content)
             match = H1_RE.search(body)
             title = match.group(1).strip() if match else path.stem
@@ -436,7 +478,8 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 def cmd_preflight(args: argparse.Namespace) -> None:
     root = safe_root(args.vault)
-    pages = load_pages(root, args.wiki_folder)
+    unreadable: list[dict[str, str]] = []
+    pages = load_pages(root, args.wiki_folder, unreadable)
     existing_hashes: dict[str, list[str]] = defaultdict(list)
     for page in pages:
         if page.page_type == "source":
@@ -454,7 +497,7 @@ def cmd_preflight(args: argparse.Namespace) -> None:
                 item["reason"] = "missing"
             elif path.suffix.lower() != ".md":
                 item.update(reason="incompatible-type", detail=path.suffix)
-            elif any(part in IGNORED_SOURCE_PARTS for part in Path(rel).parts):
+            elif has_hidden_part(Path(rel).parts):
                 item["reason"] = "managed-or-hidden-path"
             elif rel == args.wiki_folder or rel.startswith(args.wiki_folder.rstrip("/") + "/"):
                 item["reason"] = "generated-wiki-page"
@@ -476,13 +519,14 @@ def cmd_preflight(args: argparse.Namespace) -> None:
         except (OSError, UnicodeError, ValueError) as exc:
             item.update(reason="error", detail=str(exc))
         results.append(item)
-    json_dump({"accepted": sum(1 for item in results if item["accepted"]), "rejected": sum(1 for item in results if not item["accepted"]), "sources": results})
+    json_dump({"accepted": sum(1 for item in results if item["accepted"]), "rejected": sum(1 for item in results if not item["accepted"]), "sources": results, "unreadablePages": unreadable})
 
 
 def cmd_discover(args: argparse.Namespace) -> None:
     """Expand note folders and report their ingestion state without writing."""
     root = safe_root(args.vault)
-    pages = load_pages(root, args.wiki_folder)
+    unreadable: list[dict[str, str]] = []
+    pages = load_pages(root, args.wiki_folder, unreadable)
     existing_hashes: dict[str, list[str]] = defaultdict(list)
     existing_paths: dict[str, Page] = {}
     for page in pages:
@@ -521,7 +565,7 @@ def cmd_discover(args: argparse.Namespace) -> None:
     wiki_prefix = args.wiki_folder.rstrip("/") + "/"
     for rel, path in sorted(candidates.items()):
         parts = Path(rel).parts
-        if any(part in IGNORED_SOURCE_PARTS for part in parts) or rel == args.wiki_folder or rel.startswith(wiki_prefix):
+        if has_hidden_part(parts) or rel == args.wiki_folder or rel.startswith(wiki_prefix):
             excluded_count += 1
             continue
         if any(fnmatch.fnmatch(rel, pattern) or Path(rel).match(pattern) for pattern in (args.exclude or [])):
@@ -583,13 +627,15 @@ def cmd_discover(args: argparse.Namespace) -> None:
         "requestErrors": request_errors,
         "counts": dict(sorted(counts.items())),
         "sources": results,
+        "unreadablePages": unreadable,
     })
 
 
 def cmd_inventory(args: argparse.Namespace) -> None:
     root = safe_root(args.vault)
-    pages = load_pages(root, args.wiki_folder)
-    json_dump({"wikiFolder": args.wiki_folder, "count": len(pages), "pages": [page_to_dict(page) for page in pages]})
+    unreadable: list[dict[str, str]] = []
+    pages = load_pages(root, args.wiki_folder, unreadable)
+    json_dump({"wikiFolder": args.wiki_folder, "count": len(pages), "pages": [page_to_dict(page) for page in pages], "unreadablePages": unreadable})
 
 
 def tokenise(text: str) -> list[str]:
@@ -750,7 +796,8 @@ def ppr(graph: dict[str, list[str]], seed: str, rng: random.Random, walks: int =
 
 def cmd_retrieve(args: argparse.Namespace) -> None:
     root = safe_root(args.vault)
-    pages = load_pages(root, args.wiki_folder)
+    unreadable: list[dict[str, str]] = []
+    pages = load_pages(root, args.wiki_folder, unreadable)
     literal_tokens = tokenise(args.query)
     needles = list(literal_tokens)
     for keyword in args.keyword or []:
@@ -817,6 +864,7 @@ def cmd_retrieve(args: argparse.Namespace) -> None:
         "query": args.query,
         "tokens": literal_tokens,
         "keywords": args.keyword or [],
+        "unreadablePages": unreadable,
         "graph": stats,
         "seeds": seeds,
         "keywordAnchors": keyword_anchors,
@@ -902,10 +950,13 @@ def extract_mentions(body: str) -> list[tuple[str, str | None]]:
 
 def cmd_lint(args: argparse.Namespace) -> None:
     root = safe_root(args.vault)
-    pages = load_pages(root, args.wiki_folder)
+    unreadable: list[dict[str, str]] = []
+    pages = load_pages(root, args.wiki_folder, unreadable)
     exact_targets, normalized_targets = all_known_targets(root)
     exact_pages, fuzzy_pages = page_lookup(pages, args.wiki_folder)
     issues: list[dict[str, Any]] = []
+    for item in unreadable:
+        add_issue(issues, "error", "unreadable-page", item["file"], item["error"])
     graph = build_graph(pages, args.wiki_folder)
     incoming: dict[str, set[str]] = {page.rel_no_ext: set() for page in pages}
     for source, targets in graph.items():
@@ -998,8 +1049,15 @@ def cmd_lint(args: argparse.Namespace) -> None:
             except ValueError:
                 pass
 
-        for target, display in WIKILINK_RE.findall(page.content):
-            if not link_exists(target.strip(), exact_targets, normalized_targets):
+        for link_match in WIKILINK_RE.finditer(page.content):
+            target, display = link_match.group(1), link_match.group(2)
+            # Embeds (`![[...]]`) and links to non-Markdown attachments
+            # (images, PDFs, .canvas, .base) are not page links; reporting
+            # them as dead links is noise.
+            is_embed = link_match.start() > 0 and page.content[link_match.start() - 1] == "!"
+            target_suffix = Path(target.strip()).suffix.lower()
+            skip_dead_link = is_embed or target_suffix in ATTACHMENT_SUFFIXES
+            if not skip_dead_link and not link_exists(target.strip(), exact_targets, normalized_targets):
                 add_issue(issues, "warning", "dead-link", page.rel_file, f"Unresolved target: {target.strip()}")
             if re.search(r"(?:entities|concepts|sources)/(?:entities|concepts|sources)/", target):
                 add_issue(issues, "warning", "polluted-link", page.rel_file, f"Repeated path prefix: {target}")
@@ -1093,13 +1151,14 @@ def render_index(pages: list[Page], wiki_folder: str) -> str:
 
 def cmd_index(args: argparse.Namespace) -> None:
     root = safe_root(args.vault)
-    pages = load_pages(root, args.wiki_folder)
+    unreadable: list[dict[str, str]] = []
+    pages = load_pages(root, args.wiki_folder, unreadable)
     content = render_index(pages, args.wiki_folder)
     path = root / args.wiki_folder / "index.md"
     changed = not path.exists() or read_text(path) != content
     if args.write and changed:
         atomic_write(path, content)
-    json_dump({"write": args.write, "path": path.relative_to(root).as_posix(), "changed": changed, "pageCount": len(pages), "content": content if not args.write else None})
+    json_dump({"write": args.write, "path": path.relative_to(root).as_posix(), "changed": changed, "pageCount": len(pages), "unreadablePages": unreadable, "content": content if not args.write else None})
 
 
 def common(subparser: argparse.ArgumentParser) -> None:

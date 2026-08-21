@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `agents/openai.yaml` UI metadata for the five knowledge skills that lacked it (`defuddle`, `json-canvas`, `obsidian-bases`, `obsidian-cli`, `obsidian-markdown`), and a packaging test (`tests/cosmos-knowledge-tools.test.mjs`) that requires every packaged skill to carry frontmatter and UI metadata.
+- A README usage note for knowledge tools: the Obsidian vault is the Codex working directory, with fixed `wiki/` and `raw/` folder names.
 - A deterministic `fix-report` publisher (`publish-report.mjs`) with `preflight`, `publish`, and `push` commands: local-only readiness checks before any packaged change, argument-array Git calls, a fixed commit identity (`Cosmos Fix Report <fix-report@cosmos-plugins.invalid>`), hook-tamper verification, report-only backlog delivery after a failed push, and a refusal to push over unseen remote commits. Covered by `tests/fix-report-publish.test.mjs` against a bare remote.
 - A per-user `cosmos-fix-tools` binding (`fix-report-runtime.mjs`, `~/.config/cosmos-fix-tools/runtime.json`) so knowledge-tools-only installations have a durable workspace root; schema-1 only, atomic writes, no silent rebinding, canonicalized temporary-root rejection.
 - A `references/report-template.md` skeleton every report follows.
@@ -62,6 +64,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Made `wiki_ops.py` accept column-0 YAML sequence items and BOM-prefixed frontmatter, so valid pages no longer lose aliases or draw false `missing-tag`/`missing-source-citation` errors.
+- Made `wiki_ops.py` skip every dot directory (`.trash`, `.smart-env`, …) during discovery, preflight, and link-target scanning, so deleted notes are not ingested and links to trashed pages are reported dead.
+- Made one undecodable wiki page a per-page `unreadable-page` lint error (and an `unreadablePages` entry in the other commands' JSON) instead of aborting the whole command without a path.
+- Stopped reporting embeds (`![[...]]`) and known attachment links (`.png`, `.pdf`, `.canvas`, `.base`, media formats, …) as dead links — the polluted-link and polluted-display checks still cover them — and stripped embed/wikilink markup from page summaries in the index and query results.
+- Made an unreadable raw source a structured per-item `failed` plan entry that blocks plan and convert with exit 2, instead of an uncaught traceback.
+- Locked the full `raw-to-markdown` dependency tree in `requirements.txt` (previously only two top-level pins) and made that file the single source of the pinned engine version; the duplicated `PINNED_ENGINE_VERSION` constant is removed.
+- Turned off implicit invocation for `raw-to-markdown`, matching its explicit-request-only contract, and documented stale-lock recovery.
+- Declared the llm-wiki full-path link convention to take precedence over the `obsidian-markdown` shortest-path convention inside managed wiki pages.
+- Bumped `cosmos-knowledge-tools` to `0.1.5` for these fixes.
 - Made all 13 packaged CLI entry points recognize themselves when invoked through a symbolic-link path: the entry guard now compares the realpath of `process.argv[1]` with `import.meta.url` instead of exiting 0 silently. Added `tests/cli-entry-points.test.mjs`, which runs every CLI both directly and through a symlinked directory.
 - Made the sources workspace manager compare canonical temporary roots, so on macOS a workspace root under `os.tmpdir()` (`/var/folders/...` → `/private/var/...`) or `/var/tmp` is rejected as originally intended; the test suite now exercises the default temporary-root list.
 - Made `write-report.mjs` accept a report repository whose ancestor is a symbolic link (macOS `/tmp`, synced folders) and use the canonical path, while still rejecting a symlinked `fix-reports` directory itself; the `fix-report` SKILL step 5 now treats Git's canonical top-level path as authoritative.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "JSON Canvas"
+  short_description: "创建和编辑 Obsidian Canvas（.canvas）画布文件"
+  default_prompt: "使用 $json-canvas 为我创建或编辑一个 Canvas 画布。"

@@ -100,7 +100,7 @@ class RawToMarkdownTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "load_engine", return_value=RacingEngine()),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
         ):
             results, exit_code = MODULE.run_convert(
@@ -216,7 +216,7 @@ class RawToMarkdownTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "load_engine", return_value=BrokenEngine()),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
         ):
             results, exit_code = MODULE.run_convert(
@@ -293,7 +293,7 @@ class RawToMarkdownTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "load_engine", return_value=TableHeavyEngine()),
             mock.patch.object(
-                MODULE, "engine_version", return_value=MODULE.PINNED_ENGINE_VERSION
+                MODULE, "engine_version", return_value=MODULE.pinned_engine_version()
             ),
             mock.patch.object(
                 MODULE,
@@ -572,6 +572,54 @@ class RawToMarkdownTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0, results)
         self.assertIn("PDF conversion marker", source.with_suffix(".md").read_text(encoding="utf-8"))
+
+class RobustnessTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.temp.name)
+        (self.vault / "raw").mkdir()
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def test_unreadable_source_is_a_structured_plan_failure(self) -> None:
+        source = self.vault / "raw" / "locked.txt"
+        source.write_text("body", encoding="utf-8")
+        with mock.patch.object(
+            MODULE, "classify_source", side_effect=PermissionError("Permission denied")
+        ):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exit_code = MODULE.main(["plan", "--vault", str(self.vault), "raw/locked.txt"])
+        report = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 2)
+        item = next(entry for entry in report["items"] if entry["action"] == "failed")
+        self.assertIn("Cannot read source", item["reason"])
+
+    def test_unreadable_source_blocks_convert(self) -> None:
+        source = self.vault / "raw" / "locked.txt"
+        source.write_text("body", encoding="utf-8")
+        with mock.patch.object(
+            MODULE, "classify_source", side_effect=PermissionError("Permission denied")
+        ):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exit_code = MODULE.main(["convert", "--vault", str(self.vault), "raw/locked.txt"])
+        self.assertEqual(exit_code, 2)
+        self.assertFalse((self.vault / "raw" / "locked.md").exists())
+
+    def test_engine_pin_comes_from_requirements(self) -> None:
+        requirements = SCRIPT.parent.parent / "requirements.txt"
+        import re as _re
+
+        declared = None
+        for line in requirements.read_text(encoding="utf-8").splitlines():
+            match = _re.match(r"markitdown(?:\[[^\]]*\])?==([A-Za-z0-9.]+)\s*$", line.strip())
+            if match:
+                declared = match.group(1)
+        self.assertIsNotNone(declared)
+        self.assertEqual(MODULE.pinned_engine_version(), declared)
+        self.assertFalse(hasattr(MODULE, "PINNED_ENGINE_VERSION"))
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ Batch conversion performs a complete safety preflight before loading the engine.
 - Refuse to overwrite any existing Markdown, including an owned sidecar, a human-edited sidecar, or an unrelated note.
 - Do not expose an overwrite flag. Replacing, deleting, renaming, or archiving an old sidecar is a separate file-management decision requiring a separate explicit request.
 - Acquire a per-output lock and re-check the target while holding it. If a lock or target changes during conversion, stop instead of overwriting.
+- A crash can leave a stale `.<name>.md.raw-to-markdown.lock` file that blocks that output. After confirming no conversion is running, ask the user to delete that exact lock file, then rerun; never delete it silently.
 - Ignore only this converter's exact lock and namespaced staging artifacts during an explicitly authorized recursive plan; report them as skipped rather than unsupported.
 
 ## Completion gate

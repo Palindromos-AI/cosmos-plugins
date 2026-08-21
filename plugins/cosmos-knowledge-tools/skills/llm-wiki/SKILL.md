@@ -14,6 +14,7 @@ Use the current Codex model for every semantic decision. Use local code only for
 - Preserve entity and concept names in the source language. Write summaries, labels, and explanations in the wiki language.
 - Treat `wiki/entities/`, `wiki/concepts/`, and `wiki/sources/` as managed content. Never ingest generated wiki pages as source notes.
 - Preserve human-authored content and any page with `reviewed: true`.
+- Inside managed wiki pages, this skill's full-path wikilink convention takes precedence over the bare `[[Note]]` linking style used elsewhere (including examples in `obsidian-markdown`).
 
 ## Route the request
 

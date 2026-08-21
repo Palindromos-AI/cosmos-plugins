@@ -22,7 +22,6 @@ from typing import Iterable
 
 SCHEMA = "raw-to-markdown/v2"
 ENGINE_DISTRIBUTION = "markitdown"
-PINNED_ENGINE_VERSION = "0.1.6"
 NO_POSTPROCESSOR = "none"
 PDF_PROSE_POSTPROCESSOR = "pdf-prose-v1"
 SUPPORTED_EXTENSIONS = frozenset(
@@ -640,7 +639,7 @@ def classify_source(source: Path, source_rel: str) -> PlanItem:
         "converted_from_path": source_rel,
         "converted_from_format": extension.lstrip("."),
         "conversion_engine": ENGINE_DISTRIBUTION,
-        "conversion_engine_version": PINNED_ENGINE_VERSION,
+        "conversion_engine_version": pinned_engine_version(),
     }
     if any(metadata.get(key) != value for key, value in expected_values.items()):
         return PlanItem(
@@ -714,7 +713,18 @@ def classify_source(source: Path, source_rel: str) -> PlanItem:
 
 
 def classify_sources(sources: list[tuple[Path, str]]) -> list[PlanItem]:
-    items = [classify_source(source, source_rel) for source, source_rel in sources]
+    items: list[PlanItem] = []
+    for source, source_rel in sources:
+        try:
+            items.append(classify_source(source, source_rel))
+        except OSError as exc:
+            # An unreadable source (permissions, I/O error) is a per-item
+            # failure, not a crash of the whole plan.
+            items.append(PlanItem(source_rel, None, "failed", f"Cannot read source: {exc}"))
+        except ConversionError as exc:
+            # e.g. a missing or unpinned bundled requirements.txt while
+            # verifying provenance; keep the plan structured.
+            items.append(PlanItem(source_rel, None, "failed", str(exc)))
     output_owners: dict[str, list[str]] = {}
     for item in items:
         if item.output is None or item.action in {"skipped", "unsupported"}:
@@ -760,14 +770,32 @@ def load_engine():
     return MarkItDown(enable_builtins=True, enable_plugins=False)
 
 
+def pinned_engine_version() -> str:
+    # The bundled requirements.txt is the single source of the pinned engine
+    # version; duplicating the number here made a one-sided bump a hard failure.
+    requirements = Path(__file__).resolve().parent.parent / "requirements.txt"
+    try:
+        lines = requirements.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ConversionError(f"Cannot read {requirements.name}: {exc}") from exc
+    for line in lines:
+        match = re.match(
+            rf"{ENGINE_DISTRIBUTION}(?:\[[^\]]*\])?==([A-Za-z0-9.]+)\s*$", line.strip()
+        )
+        if match:
+            return match.group(1)
+    raise ConversionError(f"{requirements.name} does not pin {ENGINE_DISTRIBUTION}")
+
+
 def engine_version() -> str:
     try:
         version = importlib.metadata.version(ENGINE_DISTRIBUTION)
     except importlib.metadata.PackageNotFoundError as exc:
         raise ConversionError("Cannot determine MarkItDown version") from exc
-    if version != PINNED_ENGINE_VERSION:
+    pinned = pinned_engine_version()
+    if version != pinned:
         raise ConversionError(
-            f"MarkItDown version {version} does not match pinned {PINNED_ENGINE_VERSION}"
+            f"MarkItDown version {version} does not match pinned {pinned}"
         )
     return version
 
@@ -846,14 +874,14 @@ def run_convert(
         item
         for item in plan
         if item.action
-        in {"invalid", "unsupported", "conflict", "edited-conflict", "stale-conflict"}
+        in {"invalid", "unsupported", "conflict", "edited-conflict", "stale-conflict", "failed"}
     ]
     if blockers:
         return [asdict(item) for item in plan], 2
 
     needs_engine = any(item.action not in {"no-op", "skipped"} for item in plan)
     engine = load_engine() if needs_engine else None
-    version = engine_version() if needs_engine else PINNED_ENGINE_VERSION
+    version = engine_version() if needs_engine else pinned_engine_version()
     results: list[dict[str, str | None]] = []
     source_map = {source_rel: source for source, source_rel in sources}
     for item in plan:
@@ -990,6 +1018,7 @@ def main(argv: list[str] | None = None) -> int:
             "conflict",
             "edited-conflict",
             "stale-conflict",
+            "failed",
         }
         exit_code = 2 if any(item["action"] in unsafe for item in items) else 0
         json_report("plan", items, exit_code)

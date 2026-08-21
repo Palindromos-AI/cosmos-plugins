@@ -275,5 +275,93 @@ class RetrievalTests(unittest.TestCase):
             self.assertEqual(len(limited["droppedKeywordAnchors"]), 2)
 
 
+class VaultCompatibilityTests(unittest.TestCase):
+    def test_frontmatter_accepts_column_zero_list_items(self) -> None:
+        parsed = wiki_ops.parse_frontmatter(
+            "type: entity\ntags:\n- person\naliases:\n  - Indented\n- Flush\n"
+        )
+        self.assertEqual(parsed["tags"], ["person"])
+        self.assertEqual(parsed["aliases"], ["Indented", "Flush"])
+
+    def test_frontmatter_rejects_glued_dash_values(self) -> None:
+        # `-5` without a space is not a YAML sequence item; reading it as the
+        # item `5` would silently flip the sign.
+        parsed = wiki_ops.parse_frontmatter("count:\n-5\nitems:\n- -5\n")
+        self.assertEqual(parsed["count"], "")
+        self.assertEqual(parsed["items"], [-5])
+
+    def test_split_frontmatter_strips_byte_order_mark(self) -> None:
+        frontmatter, body = wiki_ops.split_frontmatter(
+            "\ufeff---\ntype: entity\n---\n\n# Title\n"
+        )
+        self.assertEqual(frontmatter["type"], "entity")
+        self.assertIn("# Title", body)
+
+    def test_discover_skips_dot_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "notes").mkdir()
+            (root / "notes" / "keep.md").write_text("Durable note.", encoding="utf-8")
+            trash = root / ".trash"
+            trash.mkdir()
+            (trash / "deleted.md").write_text("Deleted note.", encoding="utf-8")
+            args = argparse.Namespace(
+                vault=str(root), wiki_folder="wiki", path=["."],
+                exclude=[], preserve_case=False,
+            )
+            result = capture_json(wiki_ops.cmd_discover, args)
+            paths = [item["path"] for item in result["sources"]]
+            self.assertIn("notes/keep.md", paths)
+            self.assertNotIn(".trash/deleted.md", paths)
+
+    def test_unreadable_page_is_skipped_with_its_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_page(root, "wiki/concepts/good.md", "Good", "Readable summary.")
+            bad = root / "wiki" / "concepts" / "bad.md"
+            bad.write_bytes(b"---\ntype: concept\n---\n\xff\xfe broken")
+            args = argparse.Namespace(vault=str(root), wiki_folder="wiki")
+            result = capture_json(wiki_ops.cmd_lint, args)
+            unreadable = [
+                issue for issue in result["issues"]
+                if issue["category"] == "unreadable-page"
+            ]
+            self.assertEqual(len(unreadable), 1)
+            self.assertEqual(unreadable[0]["path"], "wiki/concepts/bad.md")
+            inventory = capture_json(
+                wiki_ops.cmd_inventory,
+                argparse.Namespace(vault=str(root), wiki_folder="wiki"),
+            )
+            self.assertEqual(
+                [item["file"] for item in inventory["unreadablePages"]],
+                ["wiki/concepts/bad.md"],
+            )
+            self.assertEqual(inventory["count"], 1)
+
+    def test_embeds_and_attachments_are_not_dead_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_page(
+                root, "wiki/concepts/media.md", "Media", "Summary text.",
+                links="![[figure.png]]\n\n[[report.pdf]]\n\n[[missing-page]]\n",
+            )
+            args = argparse.Namespace(vault=str(root), wiki_folder="wiki")
+            result = capture_json(wiki_ops.cmd_lint, args)
+            dead = [
+                issue["detail"] for issue in result["issues"]
+                if issue["category"] == "dead-link"
+            ]
+            self.assertEqual(dead, ["Unresolved target: missing-page"])
+
+    def test_summary_markup_is_stripped(self) -> None:
+        self.assertEqual(
+            wiki_ops.first_summary(
+                "## 定义\n\nUses ![[img.png]] and [[wiki/concepts/x|X]] links.\n",
+                "concept",
+            ),
+            "Uses and X links.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,8 @@ Packages these Skills:
 
 The three investment research Skills—`industry-research`, `investment-research`, and `macro-research`—are intentionally excluded.
 
+Usage note: open the Obsidian vault itself as the Codex task's working directory — `llm-wiki` and `raw-to-markdown` treat the current directory as the vault root. `raw-to-markdown` converts only files under `raw/` (fixed name), and `llm-wiki` manages pages under `wiki/` by default.
+
 ### Cosmos Sources Tools
 
 Packages these Skills:

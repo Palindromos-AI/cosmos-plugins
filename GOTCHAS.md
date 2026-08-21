@@ -1,5 +1,11 @@
 # Gotchas
 
+## A hand-rolled YAML subset silently corrupts valid frontmatter
+
+- **Symptom:** Pages written by Obsidian or other tools lose their aliases and draw error-level lint findings (`missing-tag`, `missing-source-citation`) even though the frontmatter is valid YAML; the model then "repairs" correct pages.
+- **Root cause:** The frontmatter parser required indented sequence items (`^\s+-`), while column-0 `- item` is equally valid YAML and common in the wild; a BOM prefix also made the frontmatter block invisible to the opening-fence regex.
+- **How to avoid:** When parsing a format subset by hand, test against what real tools emit (column-0 lists, BOM, quoted scalars), not only against what this codebase writes; strip the BOM before matching and accept both indentation forms.
+
 ## Checking report readiness after the repair loses the record
 
 - **Symptom:** A packaged repair succeeds, but the report repository turns out to be missing, unborn, or out of sync; the report is never written, or one failed push leaves every later report permanently blocked behind a "synchronized branch" requirement.
