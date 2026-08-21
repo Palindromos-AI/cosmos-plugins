@@ -43,10 +43,15 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
     path.join(skillRoot, "references", "supermind-api-patterns.md"),
     "utf8",
   );
+  const fallbackReference = await readFile(
+    path.join(skillRoot, "references", "baostock-akshare-patterns.md"),
+    "utf8",
+  );
 
   assert.deepEqual(files, [
     "SKILL.md",
     path.join("agents", "openai.yaml"),
+    path.join("references", "baostock-akshare-patterns.md"),
     path.join("references", "implementation-architecture.md"),
     path.join("references", "supermind-api-patterns.md"),
     "requirements.txt",
@@ -91,8 +96,17 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
 
   assert.match(skill, /implementation-architecture\.md/);
   assert.match(skill, /supermind-api-patterns\.md/);
+  assert.match(skill, /baostock-akshare-patterns\.md/);
   assert.match(architectureReference, /^## Contents$/m);
   assert.match(supermindReference, /^## Contents$/m);
+  assert.match(fallbackReference, /^## Contents$/m);
+  assert.match(fallbackReference, /bs\.login\(\)[\s\S]*bs\.logout\(\)/);
+  assert.match(fallbackReference, /error_code/);
+  assert.match(fallbackReference, /query_history_k_data_plus/);
+  assert.match(fallbackReference, /adjustflag[\s\S]*qfq[\s\S]*hfq/i);
+  assert.match(fallbackReference, /sh\.600000/);
+  assert.match(fallbackReference, /coverage gap[\s\S]*operational|operational[\s\S]*coverage gap/i);
+  assert.match(fallbackReference, /minimal capability probe/i);
   assert.match(architectureReference, /contract[\s\S]*adapter[\s\S]*normaliz[\s\S]*validat[\s\S]*deliver/i);
   assert.match(architectureReference, /provenance/i);
   assert.match(architectureReference, /partial[\s-]*(?:result|success)|部分结果/i);
@@ -125,8 +139,16 @@ test("stockdata-fetch keeps business scripts external and bundles only generic g
   assert.match(skill, /exec-file[\s\S]*(?:does not|cannot)[\s\S]*(?:business arguments|argv)/i);
   assert.match(skill, /never (?:concatenate|interpolate)[\s\S]*raw input[\s\S]*source/i);
   assert.match(skill, /business entry point[\s\S]*(?:never|must not)[\s\S]*stop-server/i);
+  assert.match(skill, /requires the user's own account[\s\S]*SuperMind/i);
+  assert.match(skill, /token page|generates or copies an API token/i);
+  assert.match(skill, /--allow-outside-workspace/);
+  assert.match(skill, /<stockdata-workspace>\/\.run\//);
+  assert.match(skill, /never persist that resolved path/i);
+  assert.match(skill, /Git repository is the user's choice/i);
+  assert.doesNotMatch(skill, /linter, and build|architecture, changelog, gotchas/i);
+  assert.doesNotMatch(skill, /notebook|workbook/i);
 
-  const references = `${architectureReference}\n${supermindReference}`;
+  const references = `${architectureReference}\n${supermindReference}\n${fallbackReference}`;
   assert.doesNotMatch(references, /supermind_full_|extract_daily|run_extract|validate_workbook/i);
   assert.doesNotMatch(references, /九个?工作表|nine expected sheets|MIN_ALL_INDEXES|MIN_QUOTED_INDEXES/i);
   assert.doesNotMatch(references, /get_all_securities\(["']stock|concept_classification|query\(valuation\)/i);
@@ -149,6 +171,7 @@ test("stockdata plugin metadata describes incremental source extension", async (
   assert.match(manifest.interface.longDescription, /generic SuperMind runtime/i);
   assert.match(manifest.interface.longDescription, /implementation reference|实现参考/i);
   assert.doesNotMatch(JSON.stringify(manifest), /full A-share dataset|notebook|workbook validator/i);
+  assert.match(readme, /SuperMind[\s\S]{0,200}account/i);
   assert.doesNotMatch(readme, /bundles only a generic SuperMind/i);
   assert.doesNotMatch(changelog, /only generic SuperMind transport remains bundled/i);
 });

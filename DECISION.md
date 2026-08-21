@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-21 — Require a SuperMind account, confine stockdata transport output, and fix the runtime invocation contract
+
+- **Clarification:** Applies to `cosmos-stockdata-tools` `0.4.0`. The single customer holds a SuperMind account, so the plugin documents that prerequisite instead of gaining a degraded no-SuperMind mode; baostock and AKShare remain coverage-gap fallbacks and never replace the account requirement.
+- **Context:** Without a token the whole plugin refused to configure, yet no distributed document said where a token comes from; `download --force` could overwrite files far outside the workspace; the SKILL imposed the maintainer's own workspace conventions (linter, build, architecture/changelog/gotchas/decisions documents) on customers; and nothing defined how persistent workspace code should reference a runtime that lives in a replaceable plugin cache.
+- **Decision:** README and SKILL state the SuperMind account prerequisite with token-acquisition steps. `download` output is confined to `<stockdata-workspace>` unless the user explicitly authorizes `--allow-outside-workspace`; the token file's directory and every `~/.config/cosmos-*` directory are refused unconditionally — this supersedes the previous blocklist that protected only the exact token file and this plugin's own binding metadata. Each task resolves the current `<skill-dir>` and passes it into commands; workspace scripts, configuration, and documents never persist that path, and rendered remote scripts live in the transient `<stockdata-workspace>/.run/`. Whether `<stockdata-workspace>` is a Git repository stays the user's choice — the Skill never initializes one; the required workspace validation is running the workspace's own tests, superseding the imposed linter/build/documentation conventions. A contract-neutral `baostock-akshare-patterns.md` reference backs the mandatory fallback rungs. Token files must be unreadable by group and others (owner-read-only is accepted), and the runtime accepts `websocket-client>=1.8,<2` while the pin in `requirements.txt` stays exact.
+- **Context:** The 2026-08-13 requirement-driven and reference-packaging decisions stay active; this entry narrows transport boundaries and removes developer-convention leakage without adding any business contract.
+
 ## 2026-08-19 — Fix every timezone to Beijing and share one implementation between the chat skills
 
 - **Clarification:** This deployment standardizes every timezone to Beijing (`Asia/Shanghai`). The `<display-timezone>` runtime binding is removed: chat skills interpret displayed timestamps as Beijing time and stop with a report if the app visibly shows another timezone; reports render every timestamp in Beijing time. This supersedes the display-timezone half of the 2026-08-11 runtime-bindings decision; the app-target and Node-executable bindings remain runtime-resolved.
@@ -143,7 +150,7 @@
 ## 2026-08-10 — Package a self-contained SuperMind stock-data plugin (superseded 2026-08-13)
 
 - **Clarification:** Add `stockdata-fetch` in a standalone `cosmos-stockdata-tools` plugin, separate from knowledge-management and source-archival plugins.
-- **Context:** Daily A-share and index extraction is an independent operational workflow that must be distributable to users who do not have Jason's local `panda` project, environment, paths, or SuperMind account ID.
+- **Context:** Daily A-share and index extraction is an independent operational workflow that must be distributable to users who do not have the maintainer's local development project, environment, paths, or SuperMind account ID.
 
 - **Decision:** Make the plugin's packaged notebook and scripts the sole maintained execution source. Bundle the stable SuperMind extraction path, dynamically discover each token's account ID, keep credentials and output external, and defer akshare/baostock until a confirmed SuperMind coverage gap creates a concrete requirement.
 - **Context:** A self-contained plugin is portable and testable. Historical dates are injected only into an in-memory notebook copy, while the bundled file remains `TARGET_DATE = None`; both normal and failed submissions restore the cloud copy to that default.

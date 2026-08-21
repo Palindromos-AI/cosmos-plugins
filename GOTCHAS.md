@@ -1,5 +1,23 @@
 # Gotchas
 
+## A blocklist protects only the destinations someone thought of
+
+- **Symptom:** stockdata `download --force` could overwrite `~/.zshrc`, another Cosmos plugin's `runtime.json`, or any file sitting next to the token file; only the exact token path, this plugin's config directory, and the plugin tree were protected.
+- **Root cause:** Output protection enumerated known-dangerous destinations instead of allowing only the intended output area, so everything not on the list was writable.
+- **How to avoid:** Confine generic transport output to the configured workspace by default and demand an explicit flag for anything outside it; keep unconditional refusals only for credential and configuration directories that must never be written even with every flag set.
+
+## Echoing a provider field can leak an account identifier the fixture never showed
+
+- **Symptom:** stockdata `status` printed JupyterHub's `server` field, which is `/user/<account>/` and therefore contains the account name, violating the no-account-identifiers rule; the test passed because its fixture used `server: None`.
+- **Root cause:** Provider-returned values were printed verbatim, and the test fixture did not mirror the real API response shape, so the assertion could never encounter the leak.
+- **How to avoid:** Print derived state (`running`/`stopped`) instead of provider payload fields, build fixtures from real response shapes, and assert that the sensitive value is absent from the output.
+
+## A safety check patched out in setUp is never actually tested
+
+- **Symptom:** The temporary-directory rejection in the stockdata runtime had zero real coverage: `setUp` patched `is_temporary_workspace` to `False` for every test because fixtures live under the OS temporary directory.
+- **Root cause:** A global convenience patch silently disabled the behavior under test in the whole suite, and no test restored it.
+- **How to avoid:** Keep a module-level reference to the real function before any patching and dedicate tests that re-patch it back in, covering both the unit predicate and the integration path that relies on it.
+
 ## Near-copy skills drift apart one fix at a time
 
 - **Symptom:** A rule fixed in one chat skill (a forwarded-message clause, a repair-contract clarification) silently never reaches its twin; the two SKILL.md files and their per-skill script copies accumulate small behavioral differences.

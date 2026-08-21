@@ -21,10 +21,12 @@ from typing import Any, NamedTuple
 
 
 DEFAULT_BASE_URL = "https://supermind.10jqka.com.cn/notebook"
-DEFAULT_CONFIG_FILE = Path.home() / ".config" / "cosmos-stockdata-tools" / "runtime.json"
+COSMOS_CONFIG_ROOT = Path.home() / ".config"
+DEFAULT_CONFIG_FILE = COSMOS_CONFIG_ROOT / "cosmos-stockdata-tools" / "runtime.json"
 SKILL_DIR = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = SKILL_DIR.parents[1]
-EXPECTED_WEBSOCKET_VERSION = "1.8.0"
+REQUIREMENTS_FILE = SKILL_DIR / "requirements.txt"
+SUPPORTED_WEBSOCKET_REQUIREMENT = "websocket-client>=1.8,<2"
 CONFIG_SCHEMA_VERSION = 1
 PLUGIN_NAME = "cosmos-stockdata-tools"
 WORKSPACE_DIRECTORY = "stockdata"
@@ -33,11 +35,11 @@ _TOKEN_CACHE: str | None = None
 _USER_CACHE: str | None = None
 
 
-class RuntimeError(Exception):
+class RuntimeFailure(Exception):
     """A safe, user-facing runtime failure."""
 
 
-class ApiError(RuntimeError):
+class ApiError(RuntimeFailure):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = status
@@ -76,7 +78,7 @@ def is_within(path: Path, directory: Path) -> bool:
 
 def require_absolute(path: Path, label: str) -> Path:
     if not path.is_absolute():
-        raise RuntimeError(f"{label} must be an absolute path: {path}")
+        raise RuntimeFailure(f"{label} must be an absolute path: {path}")
     return path.expanduser().resolve()
 
 
@@ -101,37 +103,39 @@ def validate_binding(binding: RuntimeBinding) -> RuntimeBinding:
     token_file = require_absolute(binding.token_file, "token file")
     environment = binding.micromamba_env.strip()
     if not environment or not re.fullmatch(r"[A-Za-z0-9_.-]+", environment):
-        raise RuntimeError("micromamba environment must be a non-empty environment name")
+        raise RuntimeFailure("micromamba environment must be a non-empty environment name")
     if not workspace_root.is_dir():
-        raise RuntimeError(f"workspace root directory does not exist: {workspace_root}")
+        raise RuntimeFailure(f"workspace root directory does not exist: {workspace_root}")
     if workspace != workspace_root / WORKSPACE_DIRECTORY:
-        raise RuntimeError(
+        raise RuntimeFailure(
             f"stockdata workspace must equal {workspace_root / WORKSPACE_DIRECTORY}"
         )
     if is_temporary_workspace(workspace_root):
-        raise RuntimeError(
+        raise RuntimeFailure(
             "workspace root must be durable and outside OS temporary directories"
         )
     if is_within(workspace_root, PLUGIN_DIR) or is_replaceable_distribution_path(
         workspace_root
     ):
-        raise RuntimeError(
+        raise RuntimeFailure(
             "workspace root must be outside plugin, marketplace, and plugin-cache paths"
         )
     if not workspace.is_dir():
-        raise RuntimeError(f"workspace directory does not exist: {workspace}")
+        raise RuntimeFailure(f"workspace directory does not exist: {workspace}")
     if is_temporary_workspace(workspace):
-        raise RuntimeError("workspace must be durable and outside OS temporary directories")
+        raise RuntimeFailure("workspace must be durable and outside OS temporary directories")
     if is_within(workspace, PLUGIN_DIR):
-        raise RuntimeError("workspace must be outside the installed plugin")
+        raise RuntimeFailure("workspace must be outside the installed plugin")
     if not token_file.is_file():
-        raise RuntimeError(f"token file does not exist: {token_file}")
+        raise RuntimeFailure(f"token file does not exist: {token_file}")
     if is_within(token_file, workspace):
-        raise RuntimeError("token file must remain outside the stockdata workspace")
+        raise RuntimeFailure("token file must remain outside the stockdata workspace")
     if is_within(token_file, PLUGIN_DIR):
-        raise RuntimeError("token file must be outside the installed plugin")
-    if os.name == "posix" and token_file.stat().st_mode & 0o777 != 0o600:
-        raise RuntimeError(f"token file permissions must be 600: {token_file}")
+        raise RuntimeFailure("token file must be outside the installed plugin")
+    if os.name == "posix" and token_file.stat().st_mode & 0o077 != 0:
+        raise RuntimeFailure(
+            f"token file must not be accessible to group or others (chmod 600): {token_file}"
+        )
     return RuntimeBinding(
         workspace_root,
         workspace,
@@ -141,12 +145,6 @@ def validate_binding(binding: RuntimeBinding) -> RuntimeBinding:
 
 
 def atomic_write_config(config_file: Path, binding: RuntimeBinding) -> None:
-    config_file = require_absolute(config_file, "config file")
-    if (
-        is_within(config_file, PLUGIN_DIR)
-        or is_within(config_file, binding.workspace_root)
-    ):
-        raise RuntimeError("runtime config must be outside the plugin and shared workspace root")
     parent_existed = config_file.parent.exists()
     config_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if os.name == "posix" and not parent_existed:
@@ -182,26 +180,28 @@ def configure_runtime(
     token_file = require_absolute(token_file, "token file")
     environment = micromamba_env.strip()
     if not environment or not re.fullmatch(r"[A-Za-z0-9_.-]+", environment):
-        raise RuntimeError("micromamba environment must be a non-empty environment name")
+        raise RuntimeFailure("micromamba environment must be a non-empty environment name")
     if not workspace_root.is_dir():
-        raise RuntimeError(f"workspace root directory does not exist: {workspace_root}")
+        raise RuntimeFailure(f"workspace root directory does not exist: {workspace_root}")
     if is_temporary_workspace(workspace_root):
-        raise RuntimeError("workspace root must be durable and outside OS temporary directories")
+        raise RuntimeFailure("workspace root must be durable and outside OS temporary directories")
     if is_within(workspace_root, PLUGIN_DIR) or is_replaceable_distribution_path(
         workspace_root
     ):
-        raise RuntimeError(
+        raise RuntimeFailure(
             "workspace root must be outside plugin, marketplace, and plugin-cache paths"
         )
     if not token_file.is_file():
-        raise RuntimeError(f"token file does not exist: {token_file}")
+        raise RuntimeFailure(f"token file does not exist: {token_file}")
     workspace = workspace_root / WORKSPACE_DIRECTORY
     if is_within(token_file, workspace):
-        raise RuntimeError("token file must remain outside the stockdata workspace")
+        raise RuntimeFailure("token file must remain outside the stockdata workspace")
     if is_within(token_file, PLUGIN_DIR):
-        raise RuntimeError("token file must be outside the installed plugin")
-    if os.name == "posix" and token_file.stat().st_mode & 0o777 != 0o600:
-        raise RuntimeError(f"token file permissions must be 600: {token_file}")
+        raise RuntimeFailure("token file must be outside the installed plugin")
+    if os.name == "posix" and token_file.stat().st_mode & 0o077 != 0:
+        raise RuntimeFailure(
+            f"token file must not be accessible to group or others (chmod 600): {token_file}"
+        )
     binding = RuntimeBinding(
         workspace_root,
         workspace,
@@ -209,12 +209,16 @@ def configure_runtime(
         environment,
     )
     config_file = require_absolute(config_file, "config file")
+    if is_within(config_file, PLUGIN_DIR) or is_within(config_file, workspace_root):
+        raise RuntimeFailure(
+            "runtime config must be outside the plugin and shared workspace root"
+        )
     if config_file.exists():
         try:
             existing = load_binding(config_file)
-        except RuntimeError as exc:
+        except RuntimeFailure as exc:
             if not allow_reconfigure:
-                raise RuntimeError(
+                raise RuntimeFailure(
                     f"existing runtime config is invalid; inspect it and use --reconfigure "
                     f"only after explicit authorization: {exc}"
                 ) from exc
@@ -222,7 +226,7 @@ def configure_runtime(
             if existing == binding:
                 return existing
             if not allow_reconfigure:
-                raise RuntimeError(
+                raise RuntimeFailure(
                     "runtime binding already exists and differs from the requested values; "
                     "use --reconfigure only after explicit authorization"
                 )
@@ -237,21 +241,21 @@ def load_binding(config_file: Path, *, verify_environment: bool = False) -> Runt
     try:
         payload = json.loads(config_file.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise RuntimeError(
+        raise RuntimeFailure(
             f"runtime config does not exist: {config_file}; run configure first"
         ) from exc
     except (json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError(f"cannot read runtime config {config_file}: {exc}") from exc
+        raise RuntimeFailure(f"cannot read runtime config {config_file}: {exc}") from exc
     if not isinstance(payload, dict):
-        raise RuntimeError(f"runtime config must contain a JSON object: {config_file}")
+        raise RuntimeFailure(f"runtime config must contain a JSON object: {config_file}")
     schema_version = payload.get("schema_version")
     if type(schema_version) is not int or schema_version != CONFIG_SCHEMA_VERSION:
         actual_schema = payload.get("schema_version", "missing")
-        raise RuntimeError(
+        raise RuntimeFailure(
             f"unsupported runtime schema: {actual_schema}; expected {CONFIG_SCHEMA_VERSION}"
         )
     if payload.get("plugin") != PLUGIN_NAME:
-        raise RuntimeError(f"runtime config plugin must equal {PLUGIN_NAME}")
+        raise RuntimeFailure(f"runtime config plugin must equal {PLUGIN_NAME}")
     try:
         workspace_root_value = payload["workspace_root"]
         workspace_value = payload["workspace"]
@@ -274,13 +278,13 @@ def load_binding(config_file: Path, *, verify_environment: bool = False) -> Runt
             environment_value,
         )
     except (KeyError, TypeError) as exc:
-        raise RuntimeError(
+        raise RuntimeFailure(
             f"runtime config has invalid or missing binding fields: {exc}"
         ) from exc
     binding = validate_binding(binding)
     active = os.environ.get("CONDA_DEFAULT_ENV", "").strip()
     if verify_environment and active != binding.micromamba_env:
-        raise RuntimeError(
+        raise RuntimeFailure(
             "run this command in the configured micromamba environment "
             f"{binding.micromamba_env!r}; active environment is {active or 'unknown'!r}"
         )
@@ -293,9 +297,9 @@ def read_token(token_file: Path) -> str:
     try:
         value = token_file.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise RuntimeError(f"cannot read token file {token_file}: {exc}") from exc
+        raise RuntimeFailure(f"cannot read token file {token_file}: {exc}") from exc
     if not value:
-        raise RuntimeError(f"token file is empty: {token_file}")
+        raise RuntimeFailure(f"token file is empty: {token_file}")
     _TOKEN_CACHE = value
     return value
 
@@ -312,21 +316,32 @@ def redact(value: object) -> str:
     return text
 
 
+def websocket_version_supported(version: str) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)(?:\.\S+)?", version)
+    if not match:
+        return False
+    major, minor = int(match.group(1)), int(match.group(2))
+    return major == 1 and minor >= 8
+
+
 def require_websocket() -> Any:
+    install_command = f"micromamba run -n cosmos uv pip install -r {REQUIREMENTS_FILE}"
     try:
         websocket = importlib.import_module("websocket")
         version = importlib.metadata.version("websocket-client")
     except Exception as exc:
-        raise RuntimeError(
-            f"websocket-client=={EXPECTED_WEBSOCKET_VERSION} is required: {exc}"
+        raise RuntimeFailure(
+            f"{SUPPORTED_WEBSOCKET_REQUIREMENT} is required: {exc}; "
+            f"install it with: {install_command}"
         ) from exc
-    if version != EXPECTED_WEBSOCKET_VERSION:
-        raise RuntimeError(
-            f"websocket-client {version} is installed; expected {EXPECTED_WEBSOCKET_VERSION}"
+    if not websocket_version_supported(version):
+        raise RuntimeFailure(
+            f"websocket-client {version} is installed; supported range is "
+            f"{SUPPORTED_WEBSOCKET_REQUIREMENT}; install it with: {install_command}"
         )
     for attribute in ("create_connection", "WebSocketTimeoutException"):
         if not hasattr(websocket, attribute):
-            raise RuntimeError(f"websocket-client is missing required API: {attribute}")
+            raise RuntimeFailure(f"websocket-client is missing required API: {attribute}")
     return websocket
 
 
@@ -357,19 +372,19 @@ def api(
             f"SuperMind API request failed with HTTP {exc.code}: {redact(exc.reason)}",
         ) from exc
     except Exception as exc:
-        raise RuntimeError(f"SuperMind API request failed: {redact(exc)}") from exc
+        raise RuntimeFailure(f"SuperMind API request failed: {redact(exc)}") from exc
     if raw:
         return body
     try:
         return json.loads(body) if body else None
     except json.JSONDecodeError as exc:
-        raise RuntimeError("SuperMind API returned invalid JSON") from exc
+        raise RuntimeFailure("SuperMind API returned invalid JSON") from exc
 
 
 def hub_user(binding: RuntimeBinding) -> dict[str, Any]:
     info = api(binding, "GET", "/hub/api/user")
     if not isinstance(info, dict) or not info.get("name"):
-        raise RuntimeError("SuperMind did not return an authenticated JupyterHub user")
+        raise RuntimeFailure("SuperMind did not return an authenticated JupyterHub user")
     return info
 
 
@@ -404,9 +419,9 @@ def start_server(binding: RuntimeBinding) -> None:
                 api(binding, "GET", user_path(binding, "/api/contents/?content=0"))
                 return
             except ApiError as exc:
-                if exc.status not in {404, 503}:
+                if exc.status not in {404, 424, 503}:
                     raise
-    raise RuntimeError("SuperMind server start timed out after 120 seconds")
+    raise RuntimeFailure("SuperMind server start timed out after 120 seconds")
 
 
 def stop_server(binding: RuntimeBinding) -> None:
@@ -430,7 +445,7 @@ def list_kernels(binding: RuntimeBinding) -> list[dict[str, Any]]:
 
 def status(binding: RuntimeBinding) -> None:
     info = hub_user(binding)
-    print(f"server: {info.get('server') or 'stopped'}")
+    print(f"server: {'running' if info.get('server') else 'stopped'}")
     print(f"pending: {info.get('pending') or 'none'}")
     for kernel in list_kernels(binding) if info.get("server") else []:
         print(
@@ -444,15 +459,14 @@ def delete_kernel(binding: RuntimeBinding, kernel_id: str) -> None:
         api(binding, "DELETE", user_path(binding, f"/api/kernels/{kernel_id}"))
     except ApiError as exc:
         if exc.status != 404:
-            raise RuntimeError(f"failed to delete kernel {kernel_id}: {redact(exc)}") from exc
+            raise RuntimeFailure(f"failed to delete kernel {kernel_id}: {redact(exc)}") from exc
 
 
 def connect_kernel(binding: RuntimeBinding, kernel_id: str, timeout: int) -> Any:
     websocket = require_websocket()
     secret = token(binding)
-    query = urllib.parse.urlencode({"token": secret})
     url = DEFAULT_BASE_URL.replace("https://", "wss://", 1)
-    url += user_path(binding, f"/api/kernels/{kernel_id}/channels") + "?" + query
+    url += user_path(binding, f"/api/kernels/{kernel_id}/channels")
     try:
         connection = websocket.create_connection(
             url,
@@ -463,10 +477,10 @@ def connect_kernel(binding: RuntimeBinding, kernel_id: str, timeout: int) -> Any
         response = getattr(connection, "handshake_response", None)
         if response is not None and getattr(response, "status", 101) != 101:
             connection.close()
-            raise RuntimeError("websocket redirect or non-upgrade response refused")
+            raise RuntimeFailure("websocket redirect or non-upgrade response refused")
         return connection
     except Exception as exc:
-        raise RuntimeError(f"websocket connection failed: {redact(exc)}") from exc
+        raise RuntimeFailure(f"websocket connection failed: {redact(exc)}") from exc
 
 
 def execution_message(code: str) -> tuple[str, str]:
@@ -499,8 +513,9 @@ def print_message(message: dict[str, Any]) -> None:
     kind = message.get("msg_type") or message.get("header", {}).get("msg_type")
     content = message.get("content", {})
     if kind == "stream":
-        sys.stdout.write(redact(content.get("text", "")))
-        sys.stdout.flush()
+        target = sys.stderr if content.get("name") == "stderr" else sys.stdout
+        target.write(redact(content.get("text", "")))
+        target.flush()
     elif kind in {"execute_result", "display_data"}:
         value = content.get("data", {}).get("text/plain")
         if value is not None:
@@ -522,7 +537,7 @@ def execute_code(binding: RuntimeBinding, code: str, timeout: int) -> None:
     try:
         kernel = api(binding, "POST", user_path(binding, "/api/kernels"), {"name": "python3"})
         if not isinstance(kernel, dict) or not kernel.get("id"):
-            raise RuntimeError("SuperMind did not return a kernel ID")
+            raise RuntimeFailure("SuperMind did not return a kernel ID")
         kernel_id = str(kernel["id"])
         connection = connect_kernel(binding, kernel_id, timeout)
         request, message_id = execution_message(code)
@@ -537,7 +552,7 @@ def execute_code(binding: RuntimeBinding, code: str, timeout: int) -> None:
             except websocket_module.WebSocketTimeoutException:
                 continue
             except json.JSONDecodeError as exc:
-                raise RuntimeError("SuperMind websocket returned invalid JSON") from exc
+                raise RuntimeFailure("SuperMind websocket returned invalid JSON") from exc
             if message.get("parent_header", {}).get("msg_id") != message_id:
                 continue
             print_message(message)
@@ -545,7 +560,7 @@ def execute_code(binding: RuntimeBinding, code: str, timeout: int) -> None:
             if kind == "execute_reply":
                 content = message.get("content", {})
                 if content.get("status") != "ok":
-                    raise RuntimeError(
+                    raise RuntimeFailure(
                         "remote execution failed: "
                         f"{redact(content.get('ename', 'Error'))}: "
                         f"{redact(content.get('evalue', ''))}"
@@ -555,7 +570,7 @@ def execute_code(binding: RuntimeBinding, code: str, timeout: int) -> None:
                 idle_received = True
             if reply_received and idle_received:
                 return
-        raise RuntimeError(f"remote execution timed out after {timeout} seconds")
+        raise RuntimeFailure(f"remote execution timed out after {timeout} seconds")
     except BaseException as exc:
         primary_error = exc
     finally:
@@ -564,18 +579,26 @@ def execute_code(binding: RuntimeBinding, code: str, timeout: int) -> None:
                 connection.close()
             except Exception as exc:
                 if primary_error is None:
-                    primary_error = RuntimeError(f"websocket close failed: {redact(exc)}")
+                    primary_error = RuntimeFailure(f"websocket close failed: {redact(exc)}")
         if kernel_id is not None:
             try:
                 delete_kernel(binding, kernel_id)
             except BaseException as exc:
-                cleanup = RuntimeError(f"kernel cleanup failed for {kernel_id}: {redact(exc)}")
+                cleanup = RuntimeFailure(f"kernel cleanup failed for {kernel_id}: {redact(exc)}")
                 if primary_error is None:
                     primary_error = cleanup
                 else:
-                    primary_error = RuntimeError(f"{redact(primary_error)}; {cleanup}")
+                    primary_error = RuntimeFailure(f"{redact(primary_error)}; {cleanup}")
     if primary_error is not None:
         raise primary_error
+
+
+def is_cosmos_configuration_path(path: Path) -> bool:
+    try:
+        relative = path.relative_to(COSMOS_CONFIG_ROOT.resolve())
+    except ValueError:
+        return False
+    return bool(relative.parts) and relative.parts[0].startswith("cosmos-")
 
 
 def download_file(
@@ -584,19 +607,42 @@ def download_file(
     output: Path,
     *,
     force: bool,
+    allow_outside_workspace: bool = False,
 ) -> None:
     output = require_absolute(output, "download output")
+    workspace = binding.workspace.expanduser().resolve()
+    token_file = binding.token_file.expanduser().resolve()
+    token_directory = token_file.parent
     if is_within(output, PLUGIN_DIR):
-        raise RuntimeError("download output must be outside the installed plugin")
-    if output == binding.token_file.expanduser().resolve():
-        raise RuntimeError("download output must never replace the configured token file")
-    if is_within(output, DEFAULT_CONFIG_FILE.expanduser().resolve().parent):
-        raise RuntimeError("download output must never replace stockdata runtime metadata")
+        raise RuntimeFailure("download output must be outside the installed plugin")
+    # When the token directory itself contains the workspace (a token stored at
+    # the home-directory top level), refusing its whole tree would refuse the
+    # workspace too; only its direct entries stay refused in that case.
+    protect_whole_token_tree = not is_within(workspace, token_directory)
+    if (
+        output == token_file
+        or output.parent == token_directory
+        or (protect_whole_token_tree and is_within(output, token_directory))
+    ):
+        raise RuntimeFailure(
+            "download output must never enter the configured token file's directory"
+        )
+    if is_within(
+        output, DEFAULT_CONFIG_FILE.expanduser().resolve().parent
+    ) or is_cosmos_configuration_path(output):
+        raise RuntimeFailure("download output must never replace Cosmos runtime metadata")
+    if not allow_outside_workspace and not is_within(output, workspace):
+        raise RuntimeFailure(
+            "download output must stay inside the stockdata workspace; pass "
+            "--allow-outside-workspace only after explicit user authorization"
+        )
     if output.exists() and not force:
-        raise RuntimeError(f"refusing to replace existing file without --force: {output}")
+        raise RuntimeFailure(f"refusing to replace existing file without --force: {output}")
     remote = remote_path.strip().lstrip("/")
     if not remote or remote.endswith("/"):
-        raise RuntimeError("remote path must identify one file")
+        raise RuntimeFailure("remote path must identify one file")
+    if ".." in remote.split("/"):
+        raise RuntimeFailure("remote path must not contain parent-directory segments")
     start_server(binding)
     body = api(
         binding,
@@ -642,6 +688,7 @@ def parser() -> argparse.ArgumentParser:
     download.add_argument("remote_path")
     download.add_argument("--output", type=Path, required=True)
     download.add_argument("--force", action="store_true")
+    download.add_argument("--allow-outside-workspace", action="store_true")
     return result
 
 
@@ -684,10 +731,16 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "exec-file":
             source = require_absolute(args.file, "script file")
             if not is_within(source, binding.workspace):
-                raise RuntimeError("exec-file must be inside the configured stockdata workspace")
+                raise RuntimeFailure("exec-file must be inside the configured stockdata workspace")
             execute_code(binding, source.read_text(encoding="utf-8"), args.timeout)
         elif args.command == "download":
-            download_file(binding, args.remote_path, args.output, force=args.force)
+            download_file(
+                binding,
+                args.remote_path,
+                args.output,
+                force=args.force,
+                allow_outside_workspace=args.allow_outside_workspace,
+            )
         return 0
     except BaseException as exc:
         print(f"error: {redact(exc)}", file=sys.stderr)

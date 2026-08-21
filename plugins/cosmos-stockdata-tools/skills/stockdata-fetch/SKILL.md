@@ -22,16 +22,20 @@ Read `<skill-dir>/references/implementation-architecture.md` completely before c
 
 Read `<skill-dir>/references/supermind-api-patterns.md` completely before writing or changing a SuperMind adapter or capability probe. It records previously validated API shapes, batching and completeness patterns, delayed-data handling, and known research-environment constraints. Treat each pattern as evidence for implementation shape, not authorization for its example dataset, field, limit, or output.
 
-Do not copy either reference into the user workspace. Apply only the sections relevant to the accepted requirement. When the reference does not establish an exact endpoint, field, date range, permission, or financial meaning, verify it through official documentation, the user's existing research environment, or one minimal capability probe.
+Read `<skill-dir>/references/baostock-akshare-patterns.md` completely before writing or changing a baostock or AKShare adapter for a confirmed SuperMind coverage gap. It records the session, call, code-format, adjustment, and calendar shapes of both fallback sources and how to classify their failures.
+
+Do not copy a reference into the user workspace. Apply only the sections relevant to the accepted requirement. When the reference does not establish an exact endpoint, field, date range, permission, or financial meaning, verify it through official documentation, the user's existing research environment, or one minimal capability probe.
 
 ## Configure the per-user runtime
 
 Treat the plugin cache, installed skill directory, and marketplace snapshot as read-only, replaceable distribution artifacts. Never store generated scripts, tests, mutable dependencies, runtime configuration, credentials, or retrieved data in them. The generic `<skill-dir>/scripts/supermind_runtime.py`, its pinned `requirements.txt`, and the implementation references are versioned, read-only infrastructure and guidance; they are not the user's evolving extraction program.
 
+This skill requires the user's own account on the SuperMind quantitative research platform (`supermind.10jqka.com.cn`); the baostock and AKShare rungs cover confirmed SuperMind coverage gaps and do not replace this prerequisite. To produce `<token-file>`, the user signs in to the SuperMind research (JupyterHub) environment in a browser, generates or copies an API token from its token page, saves that single line as the file content, and restricts the file to owner-only access (`chmod 600`).
+
 On first use, collect and confirm these two values together in a single setup:
 
 1. `<cosmos-workspace-root>`: a user-chosen, durable absolute root shared by the Cosmos plugin family. Derive `<stockdata-workspace>` exactly as `<cosmos-workspace-root>/stockdata`; never accept another child name or an independently chosen stockdata path.
-2. `<token-file>`: a user-chosen absolute file containing that user's own SuperMind token. Keep it outside the workspace and plugin, and require mode `600` on POSIX systems.
+2. `<token-file>`: a user-chosen absolute file containing that user's own SuperMind token. Keep it outside the workspace and plugin, readable only by its owner on POSIX systems.
 
 The Python environment is not a choice: every Cosmos plugin runs Python in the micromamba environment `cosmos` and installs packages with `uv pip`. Record `cosmos` as the environment in the binding; do not ask the user for another name.
 
@@ -48,7 +52,7 @@ micromamba run -n cosmos python <skill-dir>/scripts/supermind_runtime.py configu
 
 Treat the binding as identity, not as a convenience default:
 
-- Read `runtime.json` at the start of every later task and verify the root, derived workspace, token file, and environment regardless of the current directory.
+- Read `runtime.json` at the start of every later task and verify the root, derived workspace, token file, and micromamba environment regardless of the current directory.
 - Invoke Python only as `micromamba run -n cosmos python ...`; the runtime rejects execution from a different active environment.
 - Change the root, workspace, token-file path, or environment only after the user explicitly authorizes reconfiguration. Preserve the old workspace and token file; never move, merge, copy, overwrite, or delete them implicitly. Only then rerun `configure` with `--reconfigure`; the runtime refuses a conflicting replacement without that flag.
 - If request-supplied values conflict with `runtime.json`, stop and show the paths or environment names instead of choosing silently.
@@ -95,8 +99,10 @@ For a well-defined change, work test-first:
 2. Create or extend source-specific adapters under `<stockdata-workspace>/scripts/`; do not replace the cumulative script suite with a new one-off program.
 3. Extend the shared entry point and normalize only the fields needed by accepted requirements.
 4. Validate a small real sample, including representative instruments, a non-trading day or empty response, and the relevant date and adjustment boundaries.
-5. Write retrieved data to a user-selected durable location. Keep the interface reusable through parameters or configuration rather than machine-specific constants; decide deliberately whether generated data belongs in the workspace's `.gitignore`.
-6. Run the workspace tests, linter, and build. Update its architecture, changelog, gotchas, and decisions where applicable.
+5. Write retrieved data to a durable location inside `<stockdata-workspace>` unless the user explicitly chooses another destination. Keep the interface reusable through parameters or configuration rather than machine-specific constants.
+6. Run the workspace's own tests before delivering.
+
+Whether `<stockdata-workspace>` is a Git repository is the user's choice; never run `git init` there on your own initiative and never assume version control exists. When the user does keep it as a repository, decide deliberately whether generated data belongs in its `.gitignore` and keep `.run/` ignored.
 
 Keep source adapters separate from normalization and delivery. When combining sources, define code mappings, trading-calendar handling, units, adjustment conventions, precedence, and conflict behavior explicitly. Fail visibly when a required source or field is unavailable; do not silently return partial data.
 
@@ -110,20 +116,20 @@ Record enough provenance to reproduce each dataset:
 
 ## Execute SuperMind workspace scripts
 
-Keep SuperMind business logic in `<stockdata-workspace>/scripts/`. Do not copy the generic runtime into the workspace or edit the installed copy. Run a workspace script through the configured per-user token and environment:
+Keep SuperMind business logic in `<stockdata-workspace>/scripts/`. Do not copy the generic runtime into the workspace or edit the installed copy. Resolve `<skill-dir>` from the installed skill at the start of every task and pass it into each command invocation; never persist that resolved path in workspace scripts, configuration, or documents — it points into a replaceable plugin cache and changes on upgrade. A workspace entry point that calls the generic runtime accepts the runtime's path as a parameter or environment variable at call time. Run a workspace script through the configured per-user token and environment:
 
 ```bash
 micromamba run -n cosmos python <skill-dir>/scripts/supermind_runtime.py exec-file \
   <absolute-workspace-script> --timeout <seconds>
 ```
 
-`exec-file` sends the workspace script source but does not pass business arguments or `argv`. Keep a reusable local workspace entry point responsible for validating contract parameters and rendering the smallest remote business script with those values. Allow-list and type-check values, use safe deterministic literal serialization, and never concatenate raw input into executable source. Do not make the generic runtime aware of symbols, fields, dates, output schemas, or other business parameters.
+`exec-file` sends the workspace script source but does not pass business arguments or `argv`. Keep a reusable local workspace entry point responsible for validating contract parameters and rendering the smallest remote business script with those values. Allow-list and type-check values, use safe deterministic literal serialization, and never concatenate raw input into executable source. Write every rendered remote script to the transient `<stockdata-workspace>/.run/` directory and treat its contents as disposable. Do not make the generic runtime aware of symbols, fields, dates, output schemas, or other business parameters.
 
-Use `status`, `start-server`, `stop-server`, and `exec` only for generic runtime operations. Use `download <remote-path> --output <absolute-durable-path>` to retrieve a file created remotely; never overwrite an existing local file unless the user explicitly authorizes `--force`. Even with `--force`, the runtime must never overwrite the token file, `runtime.json`, or its sibling binding metadata. The runtime dynamically discovers the JupyterHub account from the user's token, rejects HTTP and WebSocket redirects, redacts token values from errors and output, and always attempts to delete the exact kernel it created.
+Use `status`, `start-server`, `stop-server`, and `exec` only for generic runtime operations. Use `download <remote-path> --output <absolute-path>` to retrieve a file created remotely. The runtime confines download output to `<stockdata-workspace>`: writing anywhere else requires the user to explicitly authorize `--allow-outside-workspace`, and replacing an existing file requires the user to explicitly authorize `--force`. Even with both flags, the runtime never writes into the installed plugin, the token file's directory, or any `~/.config/cosmos-*` configuration directory; when the token file's directory itself contains the workspace (for example a token stored directly in the home directory), that refusal covers the directory's direct entries so the workspace stays writable. The runtime dynamically discovers the JupyterHub account from the user's token, rejects HTTP and WebSocket redirects, redacts token values from errors and output, and always attempts to delete the exact kernel it created.
 
 Business entry points must never call `stop-server`; the Jupyter server is shared account state, while the generic runtime already deletes the exact kernel it creates. Reserve server-control commands for explicit operator requests.
 
-The runtime is transport infrastructure, not a data contract. Never add fields, datasets, dates, workbook sheets, thresholds, or source-selection policy to it. Add those only to cumulative workspace scripts in response to accepted user requirements.
+The runtime is transport infrastructure, not a data contract. Never add fields, datasets, dates, output layouts, thresholds, or source-selection policy to it. Add those only to cumulative workspace scripts in response to accepted user requirements.
 
 ## Resolve runtime and credentials at implementation time
 
@@ -133,20 +139,11 @@ Use each user's own source accounts and project-specific authentication method. 
 
 ## Hard rules
 
-- Do not recreate or assume the removed full-extraction notebook, runner, workbook validator, fixed sheet set, or fixed coverage thresholds.
-- Keep only generic, immutable SuperMind transport infrastructure and read-only, contract-neutral implementation references in the installed Skill. Never write runtime state, tokens, executable business scripts, fixed business contracts, or retrieved data into the plugin cache or marketplace snapshot.
-- On first use, configure `<cosmos-workspace-root>` and the token-file path together with the fixed micromamba environment `cosmos`, derive `<stockdata-workspace>` as `<cosmos-workspace-root>/stockdata`, then persist only the binding metadata externally. On later uses, reuse and verify the complete binding; never infer replacements from the current directory or host environment.
-- Never let marketplace, plugin, or Skill installation or update invoke configuration or alter user-owned runtime metadata, workspace files, credentials, or data.
-- Accept only `runtime.json` with `schema_version` equal to `1`; reject missing, unknown, or unsupported schemas.
-- Begin each user's `<stockdata-workspace>` with no extraction script. Create its `scripts/` for the first requirement, then evolve those existing scripts for every later requirement.
-- Implement only the current requirement, but preserve all previously accepted capabilities in the cumulative skill implementation.
-- Preserve the source priority `SuperMind -> baostock -> AKShare` for every dataset or field.
-- Distinguish unsupported data from operational failure with empirical evidence.
+- Keep only generic, immutable SuperMind transport infrastructure and read-only, contract-neutral implementation references in the installed Skill; never bundle a fixed full-extraction program, universal schema, or coverage thresholds, and never write runtime state, tokens, executable business scripts, or retrieved data into the plugin cache or marketplace snapshot.
+- Implement only the current requirement, but preserve every previously accepted capability in the cumulative workspace implementation.
+- Preserve the source priority `SuperMind -> baostock -> AKShare` for every dataset or field, and distinguish unsupported data from operational failure with empirical evidence.
 - Keep China-market dates and trading sessions explicit in `Asia/Shanghai`.
-- State the source of every delivered dataset and disclose any mixed-source result.
-- Never weaken an agreed acceptance check or present partial output as complete.
-- Never claim that one user's workspace changes are automatically shared with other users.
-- Share reusable capability across all users only through a separate upstream review and versioned release.
+- State the source of every delivered dataset, disclose any mixed-source result, and never weaken an agreed acceptance check or present partial output as complete.
 - Do not commit, merge, push, publish, install dependencies, or change unrelated files without the user's authorization. The sole exception is `$fix-report` operating on its independently configured repository for the specified report-only commit and push.
 
 ## Marketplace change reporting
