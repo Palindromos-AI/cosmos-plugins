@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-19 — Fix every timezone to Beijing and share one implementation between the chat skills
+
+- **Clarification:** This deployment standardizes every timezone to Beijing (`Asia/Shanghai`). The `<display-timezone>` runtime binding is removed: chat skills interpret displayed timestamps as Beijing time and stop with a report if the app visibly shows another timezone; reports render every timestamp in Beijing time. This supersedes the display-timezone half of the 2026-08-11 runtime-bindings decision; the app-target and Node-executable bindings remain runtime-resolved.
+- **Context:** `dingding-fetch` and `feishu-fetch` were ~95% verbatim copies whose scripts and instructions had already drifted (a forwarded-message rule existed only in feishu), and every fix had to be applied twice. The "prove the display timezone" requirement was practically unprovable and caused per-run friction.
+- **Decision:** Move the publisher and repair-budget scripts to plugin-level `scripts/chat-publish-report.mjs` and `scripts/chat-repair-state.mjs`, parameterized by namespace and skill name; a drift test diffs the two SKILL.md files after name normalization and allows only whitelisted Feishu-specific capabilities (threads, bots, refresh). A colliding output keeps the same `run-id` with a numeric filename suffix; "repair" is defined as editing installed skill files or deviating from the documented procedure, so refresh/re-scroll never consumes the budget; groups estimated above 200 in-window messages or 50 images require one user confirmation before extraction.
+- **Context:** `cls-fetch` gains an offline test suite over a fake endpoint, a one-time same-second `rn=50` retry, a 50 page-size cap, Beijing-rendered report timestamps, and a listed-batch digest that `record-review` must echo, so a batch cannot be marked reviewed without being listed.
+
 ## 2026-08-19 — Script the fix-report publish workflow and check readiness before packaged changes
 
 - **Clarification:** The commit-and-push contract is unchanged in intent — automatic, report-only, hash-verified, never touching the marketplace source repository — but its execution moves from prose steps into the bundled deterministic publisher.

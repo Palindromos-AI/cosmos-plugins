@@ -6,8 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { publishReport as publishDingdingReport } from "../plugins/cosmos-sources-tools/skills/dingding-fetch/scripts/publish-report.mjs";
-import { publishReport as publishFeishuReport } from "../plugins/cosmos-sources-tools/skills/feishu-fetch/scripts/publish-report.mjs";
+import { publishReport } from "../plugins/cosmos-sources-tools/scripts/chat-publish-report.mjs";
 import { configureRuntime } from "../plugins/cosmos-sources-tools/scripts/workspace-runtime.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,11 +56,14 @@ test("cosmos-sources-tools packages the two group-chat fetch skills", async () =
     for (const binding of [
       "<sources-workspace>",
       "<app-target>",
-      "<display-timezone>",
       "<node-executable>",
+      "<plugin-dir>",
     ]) {
       assert.ok(skill.includes(binding), `${skillName} is missing ${binding}`);
     }
+    // Timezone is fixed to Beijing by deployment decision, never resolved.
+    assert.ok(!skill.includes("<display-timezone>"), `${skillName} still resolves a display timezone`);
+    assert.match(skill, /Asia\/Shanghai/);
     assert.doesNotMatch(
       skill,
       /\/Users\/|\/Applications\/|com\.[a-z0-9.-]+|<current-project>|\bMac(?:\/app)?\b/,
@@ -92,18 +94,16 @@ test("group-chat skills use one-attempt automatic repair contracts", async () =>
   }
 });
 
-for (const { label, outputName, draftName, publishReport } of [
+for (const { label, outputName, draftName } of [
   {
     label: "dingding-fetch",
     outputName: "dingtalk",
     draftName: ".dingtalk-digest-test.tmp",
-    publishReport: publishDingdingReport,
   },
   {
     label: "feishu-fetch",
     outputName: "feishu",
     draftName: ".feishu-digest-test.tmp",
-    publishReport: publishFeishuReport,
   },
 ]) {
   test(`${label} publishes only verified bytes without clobbering`, async (t) => {
@@ -125,20 +125,20 @@ for (const { label, outputName, draftName, publishReport } of [
     const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
     await writeFile(draftPath, bytes);
 
-    await publishReport({ draftPath, targetPath, expectedSha256, runtimeOptions });
+    await publishReport({ namespace: outputName, draftPath, targetPath, expectedSha256, runtimeOptions });
     assert.deepEqual(await readFile(targetPath), bytes);
 
     const secondDraft = path.join(outputDirectory, draftName.replace("test", "second"));
     await writeFile(secondDraft, bytes);
     await assert.rejects(
-      publishReport({ draftPath: secondDraft, targetPath, expectedSha256, runtimeOptions }),
+      publishReport({ namespace: outputName, draftPath: secondDraft, targetPath, expectedSha256, runtimeOptions }),
       /target already exists/,
     );
 
     const changedDraft = path.join(outputDirectory, draftName.replace("test", "changed"));
     await writeFile(changedDraft, "changed report\n");
     await assert.rejects(
-      publishReport({
+      publishReport({ namespace: outputName,
         draftPath: changedDraft,
         targetPath: path.join(outputDirectory, "changed.md"),
         expectedSha256,
@@ -150,7 +150,7 @@ for (const { label, outputName, draftName, publishReport } of [
     const externalDraft = path.join(directory, draftName.replace("test", "external"));
     await writeFile(externalDraft, bytes);
     await assert.rejects(
-      publishReport({
+      publishReport({ namespace: outputName,
         draftPath: externalDraft,
         targetPath: path.join(directory, "external.md"),
         expectedSha256,

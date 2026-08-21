@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { batchDigest } from "./list-candidates.mjs";
 
 function validateIds(name, ids) {
   if (!Array.isArray(ids) || !ids.every(Number.isInteger)) {
@@ -43,7 +44,7 @@ function validateExistingState(dataset, state) {
 export function advanceReviewState(
   dataset,
   state,
-  { offset, limit, selectedIds = [] },
+  { offset, limit, selectedIds = [], listedBatchDigest },
 ) {
   if (!dataset?.complete || !Array.isArray(dataset.items)) {
     throw new Error("Source dataset is incomplete or malformed");
@@ -53,6 +54,9 @@ export function advanceReviewState(
   }
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
     throw new Error("limit must be an integer from 1 to 50");
+  }
+  if (typeof listedBatchDigest !== "string" || !/^[0-9a-f]{16}$/.test(listedBatchDigest)) {
+    throw new Error("listedBatchDigest must be the batch_digest from list-candidates");
   }
   validateIds("selectedIds", selectedIds);
 
@@ -67,6 +71,11 @@ export function advanceReviewState(
   if (dataset.items.length === 0) {
     if (selectedIds.length > 0) {
       throw new Error("An empty source dataset cannot contain selected IDs");
+    }
+    if (listedBatchDigest !== batchDigest(dataset.date, offset, [])) {
+      throw new Error(
+        "Batch digest does not match the listed batch; run list-candidates with the same offset and limit, then record with its batch_digest",
+      );
     }
     return {
       state: nextState,
@@ -85,6 +94,11 @@ export function advanceReviewState(
     throw new Error("No unreviewed source items remain at this offset");
   }
   const batchIds = batch.map((item) => item.id);
+  if (listedBatchDigest !== batchDigest(dataset.date, offset, batchIds)) {
+    throw new Error(
+      "Batch digest does not match the listed batch; run list-candidates with the same offset and limit, then record with its batch_digest",
+    );
+  }
   const batchSet = new Set(batchIds);
   const outsideBatch = selectedIds.filter((id) => !batchSet.has(id));
   if (outsideBatch.length > 0) {
@@ -154,7 +168,7 @@ function parseArgs(argv) {
     options[flag.slice(2)] = value;
     index += 1;
   }
-  for (const required of ["source", "state", "offset", "limit"]) {
+  for (const required of ["source", "state", "offset", "limit", "batch"]) {
     if (options[required] === undefined) {
       throw new Error(`--${required} is required`);
     }
@@ -165,6 +179,7 @@ function parseArgs(argv) {
     offset: parseInteger("--offset", options.offset, { allowZero: true }),
     limit: parseInteger("--limit", options.limit),
     selectedIds: parseSelectedIds(options.selected),
+    listedBatchDigest: options.batch,
   };
 }
 

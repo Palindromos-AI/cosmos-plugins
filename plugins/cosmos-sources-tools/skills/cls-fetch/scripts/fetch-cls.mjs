@@ -9,6 +9,9 @@ import { pathToFileURL } from "node:url";
 export const TIME_ZONE = "Asia/Shanghai";
 export const DEFAULT_BASE_URL = "https://www.cls.cn";
 export const DEFAULT_PAGE_SIZE = 20;
+// The endpoint returns an empty page for rn above 50, which would read as a
+// misleading "empty page before the start boundary" failure.
+export const MAX_PAGE_SIZE = 50;
 
 const APP_PARAMS = Object.freeze({
   app: "CailianpressWeb",
@@ -194,14 +197,19 @@ export async function fetchDay({
     throw new Error("now must be a valid Date");
   }
   const { start, end } = dateWindow(date);
+  if (pageSize > MAX_PAGE_SIZE) {
+    throw new Error(`pageSize cannot exceed ${MAX_PAGE_SIZE}`);
+  }
   let cursor = initialCursor(date, now);
   let pages = 0;
   let stopReason = null;
   let previousTailTime = null;
+  let boostedCursor = null;
   const byId = new Map();
 
   while (pages < maxPages) {
-    const url = buildRequestUrl({ baseUrl, cursor, pageSize });
+    const requestSize = boostedCursor === cursor ? MAX_PAGE_SIZE : pageSize;
+    const url = buildRequestUrl({ baseUrl, cursor, pageSize: requestSize });
     const payload = await fetchJson(url, {
       fetchImpl,
       sleepImpl,
@@ -249,8 +257,26 @@ export async function fetchDay({
     // boundary second; ID deduplication removes repeats without skipping peers.
     const nextCursor = tailTime + 1;
     if (nextCursor >= cursor) {
+      // A short page that cannot advance means the feed holds nothing older:
+      // the start boundary cannot be proven, so fail closed.
+      if (pageItems.length < requestSize) {
+        throw new Error(
+          `CLS feed ended at cursor=${cursor} before the Shanghai start boundary; completeness cannot be proven`,
+        );
+      }
+      // A full page sharing one ctime second stalls the cursor. Retry the
+      // same cursor once at the maximum page size before failing, so a burst
+      // of same-second items does not make the day permanently unfetchable.
+      if (requestSize < MAX_PAGE_SIZE) {
+        boostedCursor = cursor;
+        if (delayMs > 0) {
+          await sleepImpl(delayMs);
+        }
+        continue;
+      }
       throw new Error(
-        `Pagination made no progress: cursor=${cursor}, tail=${tailTime}`,
+        `Pagination made no progress at cursor=${cursor} even with rn=${MAX_PAGE_SIZE}; ` +
+          `at least ${MAX_PAGE_SIZE} items share the second ${tailTime}`,
       );
     }
 
@@ -332,6 +358,14 @@ function parseIntegerFlag(name, value, { allowZero = false } = {}) {
   return number;
 }
 
+function parsePageSize(value) {
+  const number = parseIntegerFlag("--page-size", value);
+  if (number > MAX_PAGE_SIZE) {
+    throw new Error(`--page-size cannot exceed ${MAX_PAGE_SIZE}; the endpoint returns an empty page above it`);
+  }
+  return number;
+}
+
 export function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -353,7 +387,7 @@ export function parseArgs(argv) {
     now: options.now ? new Date(options.now) : new Date(),
     baseUrl: options["base-url"] ?? DEFAULT_BASE_URL,
     pageSize: options["page-size"]
-      ? parseIntegerFlag("--page-size", options["page-size"])
+      ? parsePageSize(options["page-size"])
       : DEFAULT_PAGE_SIZE,
     maxPages: options["max-pages"]
       ? parseIntegerFlag("--max-pages", options["max-pages"])

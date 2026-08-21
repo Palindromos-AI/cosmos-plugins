@@ -18,13 +18,13 @@ incomplete-report rules without consuming the repair attempt.
 ## One-attempt limit
 
 Allow exactly one automatic repair attempt per run, shared across all requested
-groups, threads, and phases. Call `scripts/repair-state.mjs begin` before editing
+groups, threads, and phases. Call `<plugin-dir>/scripts/chat-repair-state.mjs begin feishu-fetch ...` before editing
 or trying a changed procedure. Continue only when it returns
 `automatic-repair-authorized`. If it returns `repair-limit-reached`, stop repair
 immediately, retain only reliable recovered content, and finish through the
 incomplete-report path when a verified draft can still be produced.
 
-Keep `repair-state.json` for the entire run. Do not reset, delete, rename,
+Deleting `repair-state.json` would re-arm the budget; the script cannot prevent that, so treat it as a prohibited action, not a recovery path. Keep `repair-state.json` for the entire run. Do not reset, delete, rename,
 replace, or create another state file after a successful repair or a later
 failure. A successful repair and resume do not restore the budget. Treat corrupt
 or conflicting state as a direct blocker rather than recreating it.

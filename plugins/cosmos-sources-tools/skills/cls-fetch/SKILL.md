@@ -11,7 +11,7 @@ Collect the complete current-day CLS telegraph feed, let Codex select semantical
 
 ### 1. Resolve the workspace and request
 
-- Read `<plugin-dir>/references/workspace-runtime.md` completely, then run `node <plugin-dir>/scripts/workspace-runtime.mjs show-config`. Configure only after the user explicitly confirms a durable root. Use the returned `<sources-workspace>` for this entire run.
+- Resolve `<plugin-dir>` as the installed plugin directory two levels above this `SKILL.md` (the directory containing `skills/`), and `<skill-dir>` as the directory containing this `SKILL.md`. Read `<plugin-dir>/references/workspace-runtime.md` completely, then run `node <plugin-dir>/scripts/workspace-runtime.mjs show-config`. Configure only after the user explicitly confirms a durable root. Use the returned `<sources-workspace>` for this entire run.
 - Refuse an explicit output path outside `<sources-workspace>/output/cls`. Marketplace, plugin, and Skill updates never own or alter the binding or workspace.
 
 - Require a natural-language filter condition. Ask if it is missing.
@@ -90,14 +90,15 @@ node <skill-dir>/scripts/record-review.mjs \
   --state <temp-dir>/review.json \
   --offset <current-offset> \
   --limit 20 \
+  --batch <batch_digest-from-list-candidates> \
   --selected "123,456"
 ```
 
 - Omit `--selected` when no item in the batch qualifies.
-- Use the same offset and limit as the candidate command.
+- Use the same offset and limit as the candidate command, and pass the exact `batch_digest` that `list-candidates.mjs` returned for that batch; recording is refused when they disagree, so a batch can only be marked reviewed after actually being listed.
 - Continue from the returned `next_offset`.
 - Confirm the final state reports `complete: true`. The renderer rejects a state that does not cover every source item.
-- If the source reports `total: 0`, run `record-review.mjs` once with offset `0`, the current limit, and no `--selected`; it creates a complete empty review state.
+- If the source reports `total: 0`, run `list-candidates.mjs` once and then `record-review.mjs` with offset `0`, the current limit, its `batch_digest`, and no `--selected`; it creates a complete empty review state.
 
 ### 6. Render unchanged source text
 

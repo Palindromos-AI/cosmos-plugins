@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 
-// Publish verified dingding-fetch report artifacts without clobbering.
+// Publish verified chat-source report artifacts without clobbering. Shared by
+// dingding-fetch and feishu-fetch; the namespace selects the output directory
+// and the draft/stage naming so the two skills cannot drift apart.
 
 import { realpathSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { link, lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveOutputPath } from "../../../scripts/workspace-runtime.mjs";
+import { resolveOutputPath } from "./workspace-runtime.mjs";
+
+const NAMESPACES = new Set(["dingtalk", "feishu"]);
+
+function requireNamespace(value) {
+  if (!NAMESPACES.has(value)) {
+    throw new TypeError(`namespace must be one of: ${[...NAMESPACES].join(", ")}`);
+  }
+  return value;
+}
 
 function requireString(value, label) {
   if (typeof value !== "string" || value.length === 0) {
@@ -44,23 +55,26 @@ async function readStableRegularFile(draft) {
 }
 
 export async function publishReport({
+  namespace,
   draftPath,
   targetPath,
   expectedSha256,
   runtimeOptions,
 }) {
+  const space = requireNamespace(namespace);
   const draft = requireString(draftPath, "draftPath");
   const target = await resolveOutputPath(
     requireString(targetPath, "targetPath"),
     runtimeOptions,
-    "dingtalk",
+    space,
   );
   const expected = requireSha256(expectedSha256);
   if (path.dirname(draft) !== path.dirname(target)) {
     throw new Error("draft and target must be in the same directory");
   }
-  if (!/^\.dingtalk-digest-[A-Za-z0-9-]+\.tmp$/.test(path.basename(draft))) {
-    throw new Error("draft must use the .dingtalk-digest-<id>.tmp name");
+  const draftPattern = new RegExp(`^\\.${space}-digest-[A-Za-z0-9-]+\\.tmp$`);
+  if (!draftPattern.test(path.basename(draft))) {
+    throw new Error(`draft must use the .${space}-digest-<id>.tmp name`);
   }
   if (!target.endsWith(".md")) {
     throw new Error("target must be a .md target");
@@ -74,7 +88,7 @@ export async function publishReport({
 
   const stage = path.join(
     path.dirname(target),
-    `.dingtalk-publish-${randomBytes(12).toString("hex")}.tmp`,
+    `.${space}-publish-${randomBytes(12).toString("hex")}.tmp`,
   );
   const stageHandle = await open(stage, "wx", 0o600);
   try {
@@ -134,12 +148,17 @@ function isMainModule() {
 }
 
 if (isMainModule()) {
-  const [draftPath, targetPath, expectedSha256] = process.argv.slice(2);
+  const [namespace, draftPath, targetPath, expectedSha256] = process.argv.slice(2);
   try {
-    const publishedPath = await publishReport({ draftPath, targetPath, expectedSha256 });
+    const publishedPath = await publishReport({
+      namespace,
+      draftPath,
+      targetPath,
+      expectedSha256,
+    });
     process.stdout.write(`${JSON.stringify({ published_path: publishedPath })}\n`);
   } catch (error) {
-    process.stderr.write(`publish-report: ${error.message}\n`);
+    process.stderr.write(`chat-publish-report: ${error.message}\n`);
     process.exitCode = 1;
   }
 }

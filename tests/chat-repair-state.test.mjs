@@ -6,22 +6,18 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
-import * as dingdingRepair from "../plugins/cosmos-sources-tools/skills/dingding-fetch/scripts/repair-state.mjs";
-import * as feishuRepair from "../plugins/cosmos-sources-tools/skills/feishu-fetch/scripts/repair-state.mjs";
+import { beginRepair } from "../plugins/cosmos-sources-tools/scripts/chat-repair-state.mjs";
 
 const execFileAsync = promisify(execFile);
 
-for (const [skillName, repair] of [
-  ["dingding-fetch", dingdingRepair],
-  ["feishu-fetch", feishuRepair],
-]) {
+for (const skillName of ["dingding-fetch", "feishu-fetch"]) {
   test(`${skillName} allows exactly one automatic repair per run`, async (t) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), `${skillName}-repair-`));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const statePath = path.join(directory, "repair-state.json");
     const runId = "a1b2c3d4";
 
-    const first = await repair.beginRepair({
+    const first = await beginRepair({ skill: skillName,
       statePath,
       runId,
       failureCode: "UI_CONTRACT_MISMATCH",
@@ -35,7 +31,7 @@ for (const [skillName, repair] of [
       max_attempts: 1,
     });
 
-    const second = await repair.beginRepair({
+    const second = await beginRepair({ skill: skillName,
       statePath,
       runId,
       failureCode: "SECOND_UI_CONTRACT_MISMATCH",
@@ -68,14 +64,14 @@ for (const [skillName, repair] of [
     t.after(() => rm(directory, { recursive: true, force: true }));
     const statePath = path.join(directory, "repair-state.json");
 
-    await repair.beginRepair({
+    await beginRepair({ skill: skillName,
       statePath,
       runId: "11111111",
       failureCode: "UI_CONTRACT_MISMATCH",
       phase: "group-navigation",
     });
     await assert.rejects(
-      repair.beginRepair({
+      beginRepair({ skill: skillName,
         statePath,
         runId: "22222222",
         failureCode: "UI_CONTRACT_MISMATCH",
@@ -87,7 +83,7 @@ for (const [skillName, repair] of [
     const corruptPath = path.join(directory, "corrupt-repair-state.json");
     await writeFile(corruptPath, "{}\n", { mode: 0o600 });
     await assert.rejects(
-      repair.beginRepair({
+      beginRepair({ skill: skillName,
         statePath: corruptPath,
         runId: "33333333",
         failureCode: "UI_CONTRACT_MISMATCH",
@@ -113,7 +109,7 @@ for (const [skillName, repair] of [
       { mode: 0o600 },
     );
     await assert.rejects(
-      repair.beginRepair({
+      beginRepair({ skill: skillName,
         statePath: malformedRunPath,
         runId: "33333333",
         failureCode: "UI_CONTRACT_MISMATCH",
@@ -129,7 +125,7 @@ for (const [skillName, repair] of [
     const statePath = path.join(directory, "repair-state.json");
 
     const responses = await Promise.all(
-      Array.from({ length: 20 }, (_, index) => repair.beginRepair({
+      Array.from({ length: 20 }, (_, index) => beginRepair({ skill: skillName,
         statePath,
         runId: "a1b2c3d4",
         failureCode: `UI_CONTRACT_MISMATCH_${index}`,
@@ -154,11 +150,12 @@ for (const skillName of ["dingding-fetch", "feishu-fetch"]) {
     t.after(() => rm(directory, { recursive: true, force: true }));
     const statePath = path.join(directory, "repair-state.json");
     const scriptPath = path.resolve(
-      `plugins/cosmos-sources-tools/skills/${skillName}/scripts/repair-state.mjs`,
+      "plugins/cosmos-sources-tools/scripts/chat-repair-state.mjs",
     );
     const args = [
       scriptPath,
       "begin",
+      skillName,
       statePath,
       "a1b2c3d4",
       "UI_CONTRACT_MISMATCH",

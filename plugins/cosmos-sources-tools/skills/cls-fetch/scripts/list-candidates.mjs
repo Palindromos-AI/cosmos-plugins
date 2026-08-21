@@ -1,10 +1,20 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const TIME_ZONE = "Asia/Shanghai";
+
+// A digest over the exact listed batch: record-review requires it, so a batch
+// can only be marked reviewed after being listed with the same offset/limit.
+export function batchDigest(date, offset, ids) {
+  return createHash("sha256")
+    .update(`${date}\n${offset}\n${ids.join(",")}`)
+    .digest("hex")
+    .slice(0, 16);
+}
 
 function parsePositiveInteger(name, value, { allowZero = false } = {}) {
   const number = Number(value);
@@ -56,6 +66,7 @@ export function listCandidates(dataset, { offset = 0, limit = 10 } = {}) {
     throw new Error(`Offset ${offset} exceeds item count ${dataset.items.length}`);
   }
   const end = Math.min(offset + limit, dataset.items.length);
+  const batch = dataset.items.slice(offset, end);
   return {
     date: dataset.date,
     timezone: dataset.timezone,
@@ -63,7 +74,8 @@ export function listCandidates(dataset, { offset = 0, limit = 10 } = {}) {
     offset,
     limit: end - offset,
     next_offset: end < dataset.items.length ? end : null,
-    items: dataset.items.slice(offset, end).map(candidateView),
+    batch_digest: batchDigest(dataset.date, offset, batch.map((item) => item.id)),
+    items: batch.map(candidateView),
   };
 }
 

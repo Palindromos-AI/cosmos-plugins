@@ -1,5 +1,11 @@
 # Gotchas
 
+## Near-copy skills drift apart one fix at a time
+
+- **Symptom:** A rule fixed in one chat skill (a forwarded-message clause, a repair-contract clarification) silently never reaches its twin; the two SKILL.md files and their per-skill script copies accumulate small behavioral differences.
+- **Root cause:** `dingding-fetch` and `feishu-fetch` were maintained as ~95% verbatim copies with no mechanism forcing edits to land in both.
+- **How to avoid:** Keep shared behavior in one parameterized plugin-level script (`chat-publish-report.mjs`, `chat-repair-state.mjs`) and let `tests/chat-skill-drift.test.mjs` fail on any SKILL.md divergence outside the whitelisted Feishu-specific capabilities; extend the whitelist deliberately, never by weakening the test.
+
 ## A hand-rolled YAML subset silently corrupts valid frontmatter
 
 - **Symptom:** Pages written by Obsidian or other tools lose their aliases and draw error-level lint findings (`missing-tag`, `missing-source-citation`) even though the frontmatter is valid YAML; the model then "repairs" correct pages.
@@ -106,7 +112,7 @@
 
 - **Symptom:** An installed skill works on the packaging machine but cannot locate another user's app, output directory, display timezone, or runtime.
 - **Root cause:** Machine-specific paths, bundle identifiers, host assumptions, or executable locations were encoded as universal plugin settings.
-- **How to avoid:** Keep business invariants fixed, but resolve `<workspace-root>`, `<app-target>`, `<display-timezone>`, and `<node-executable>` for each run. Accept explicit overrides, stop on ambiguous required values, and keep resolved settings out of the packaged skill and reader report.
+- **How to avoid:** Keep business invariants fixed, but resolve `<workspace-root>`, `<app-target>`, and `<node-executable>` for each run (the display timezone is no longer resolved: every timezone is fixed to Beijing by the 2026-08-19 decision). Accept explicit overrides, stop on ambiguous required values, and keep resolved settings out of the packaged skill and reader report.
 
 ## The official plugin validator requires PyYAML before validation begins
 

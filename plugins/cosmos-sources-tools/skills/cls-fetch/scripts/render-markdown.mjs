@@ -40,6 +40,22 @@ function formatShanghaiTime(epochSeconds) {
   }).format(new Date(epochSeconds * 1000));
 }
 
+// Every timestamp in the report is Beijing time; never mix in raw UTC ISO strings.
+function formatShanghaiDateTime(isoString) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(isoString));
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}:${values.second}（北京时间）`;
+}
+
 export function parseSelection(selection, dataset) {
   if (!selection || !Array.isArray(selection.selected_ids)) {
     throw new Error("Selection must contain a selected_ids array");
@@ -97,8 +113,8 @@ export function renderMarkdown(dataset, selection, filterCondition) {
     `- 筛选条件：${displayFilter(filterCondition)}`,
     `- 当天电报总数：${dataset.item_count}`,
     `- 符合条件：${selectedItems.length}`,
-    `- 数据截止：${dataset.snapshot_at ?? dataset.fetched_at}`,
-    `- 抓取时间：${dataset.fetched_at}`,
+    `- 数据截止：${formatShanghaiDateTime(dataset.snapshot_at ?? dataset.fetched_at)}`,
+    `- 抓取时间：${formatShanghaiDateTime(dataset.fetched_at)}`,
     "- 内容说明：正文保持财联社原文，未改写。",
     "",
   ];

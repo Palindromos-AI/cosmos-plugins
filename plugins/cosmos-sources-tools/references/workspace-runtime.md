@@ -29,3 +29,10 @@ Treat a binding as user identity. A conflicting root requires the user's explici
 - Treat installed plugin files as replaceable read-only capability code. Treat `runtime.json` and `<sources-workspace>` as user-owned durable state.
 - Write every final report inside its own `<sources-workspace>/output/{cls,zsxq,dingtalk,feishu}` namespace. An explicit output path may refine the location only within the matching source namespace; it may not write at the workspace root or cross into another source's directory.
 - Keep credentials outside the workspace. Keep private run state in a dedicated OS temporary directory and remove only the exact run directory after successful verification; retained failure diagnostics do not become durable user data.
+
+## Root requirements
+
+- The chosen root directory must already exist; `configure` never creates it.
+- The root itself must be a real directory, not a symbolic link (symbolic-link ancestors are allowed and resolved canonically).
+- The home directory itself cannot be the root, because `runtime.json` under `~/.config` must stay outside the workspace root.
+- OS temporary directories are rejected as roots even when they resolve through symbolic links.

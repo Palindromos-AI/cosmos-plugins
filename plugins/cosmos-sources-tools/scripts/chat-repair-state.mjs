@@ -1,15 +1,26 @@
 #!/usr/bin/env node
 
+// One-attempt automatic repair budget shared by dingding-fetch and
+// feishu-fetch. The skill name is a parameter so both skills use one
+// implementation and cannot drift apart.
+
 import { realpathSync } from "node:fs";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SKILL_NAME = "dingding-fetch";
+const SKILLS = new Set(["dingding-fetch", "feishu-fetch"]);
 const MAX_ATTEMPTS = 1;
 const RUN_ID = /^[a-f0-9]{8}$/u;
 const FAILURE_CODE = /^[A-Z][A-Z0-9_]{0,79}$/u;
 const PHASE = /^[a-z][a-z0-9-]{0,79}$/u;
+
+function requireSkill(value) {
+  if (!SKILLS.has(value)) {
+    throw new TypeError(`skill must be one of: ${[...SKILLS].join(", ")}`);
+  }
+  return value;
+}
 
 function requiredMatch(value, pattern, label) {
   if (typeof value !== "string" || !pattern.test(value)) {
@@ -25,13 +36,13 @@ function requiredStatePath(value) {
   return path.resolve(value);
 }
 
-function validateState(value, statePath) {
+function validateState(value, skill, statePath) {
   if (
     value === null
     || typeof value !== "object"
     || Array.isArray(value)
     || value.schema_version !== 1
-    || value.skill !== SKILL_NAME
+    || value.skill !== skill
     || !RUN_ID.test(value.run_id)
     || value.max_attempts !== MAX_ATTEMPTS
     || value.attempts_used !== MAX_ATTEMPTS
@@ -46,7 +57,7 @@ function validateState(value, statePath) {
   return value;
 }
 
-async function readState(statePath) {
+async function readState(statePath, skill) {
   const fileStat = await lstat(statePath);
   if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
     throw new Error(`invalid repair state: ${statePath}`);
@@ -57,13 +68,13 @@ async function readState(statePath) {
   } catch (error) {
     throw new Error(`invalid repair state: ${statePath}`, { cause: error });
   }
-  return validateState(parsed, statePath);
+  return validateState(parsed, skill, statePath);
 }
 
-function result(status, runId) {
+function result(status, skill, runId) {
   return {
     status,
-    skill: SKILL_NAME,
+    skill,
     run_id: runId,
     attempts_used: MAX_ATTEMPTS,
     max_attempts: MAX_ATTEMPTS,
@@ -74,6 +85,7 @@ export async function beginRepair(options) {
   if (options === null || typeof options !== "object" || Array.isArray(options)) {
     throw new TypeError("repair options must be an object");
   }
+  const skill = requireSkill(options.skill);
   const statePath = requiredStatePath(options.statePath);
   const runId = requiredMatch(options.runId, RUN_ID, "runId");
   const failureCode = requiredMatch(
@@ -84,7 +96,7 @@ export async function beginRepair(options) {
   const phase = requiredMatch(options.phase, PHASE, "phase");
   const state = {
     schema_version: 1,
-    skill: SKILL_NAME,
+    skill,
     run_id: runId,
     attempts_used: MAX_ATTEMPTS,
     max_attempts: MAX_ATTEMPTS,
@@ -97,16 +109,16 @@ export async function beginRepair(options) {
       flag: "wx",
       mode: 0o600,
     });
-    return result("automatic-repair-authorized", runId);
+    return result("automatic-repair-authorized", skill, runId);
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
   }
 
-  const existing = await readState(statePath);
+  const existing = await readState(statePath, skill);
   if (existing.run_id !== runId) {
     throw new Error(`repair state belongs to another run: ${statePath}`);
   }
-  return result("repair-limit-reached", runId);
+  return result("repair-limit-reached", skill, runId);
 }
 
 // Resolve the invoked path before comparing: Node resolves `import.meta.url`
@@ -125,12 +137,13 @@ function isMainModule() {
 }
 
 if (isMainModule()) {
-  const [command, statePath, runId, failureCode, phase] = process.argv.slice(2);
+  const [command, skill, statePath, runId, failureCode, phase] = process.argv.slice(2);
   try {
     if (command !== "begin") {
       throw new Error("command must be begin");
     }
     const response = await beginRepair({
+      skill,
       statePath,
       runId,
       failureCode,
@@ -138,7 +151,7 @@ if (isMainModule()) {
     });
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch (error) {
-    process.stderr.write(`repair-state: ${error.message}\n`);
+    process.stderr.write(`chat-repair-state: ${error.message}\n`);
     process.exitCode = 1;
   }
 }

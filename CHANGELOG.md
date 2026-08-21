@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- An offline `cls-fetch` test suite (`tests/cls-fetch.test.mjs`) over an in-process fake endpoint: signing, Shanghai date window, overlap-and-deduplicate pagination, every fail-closed branch, same-second retry, and the digest-verified review-to-render round trip.
+- A listed-batch digest: `list-candidates.mjs` returns `batch_digest` and `record-review.mjs` requires it, so a batch can only be marked reviewed after being listed with the same offset and limit.
+- Plugin-level `chat-publish-report.mjs` and `chat-repair-state.mjs`, parameterized by namespace and skill, replacing the four near-identical per-skill scripts; `tests/chat-skill-drift.test.mjs` keeps the two chat SKILL.md files in sync outside whitelisted Feishu capabilities.
+- A volume checkpoint in both chat skills: a group estimated above 200 in-window messages or 50 images requires one user confirmation before extraction.
+- Documented root requirements in `references/workspace-runtime.md` (root must pre-exist, must not be a symbolic link, home and temporary directories rejected).
 - `agents/openai.yaml` UI metadata for the five knowledge skills that lacked it (`defuddle`, `json-canvas`, `obsidian-bases`, `obsidian-cli`, `obsidian-markdown`), and a packaging test (`tests/cosmos-knowledge-tools.test.mjs`) that requires every packaged skill to carry frontmatter and UI metadata.
 - A README usage note for knowledge tools: the Obsidian vault is the Codex working directory, with fixed `wiki/` and `raw/` folder names.
 - A deterministic `fix-report` publisher (`publish-report.mjs`) with `preflight`, `publish`, and `push` commands: local-only readiness checks before any packaged change, argument-array Git calls, a fixed commit identity (`Cosmos Fix Report <fix-report@cosmos-plugins.invalid>`), hook-tamper verification, report-only backlog delivery after a failed push, and a refusal to push over unseen remote commits. Covered by `tests/fix-report-publish.test.mjs` against a bare remote.
@@ -34,6 +39,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-sources-tools` to `0.5.0`: the chat skills now call the shared plugin-level scripts, and the `<display-timezone>` binding is removed — every timezone is fixed to Beijing (`Asia/Shanghai`); displayed timestamps are interpreted as Beijing time, a visibly non-Beijing app stops the run, and `cls-fetch` reports render all timestamps in Beijing time instead of mixing in UTC ISO strings.
+- Sharpened the chat repair contract: "repair" means editing installed skill files or deviating from the documented procedure (refresh, re-scroll, and re-search never consume the attempt); a colliding output keeps the same `run-id` with a numeric filename suffix; the playbooks state that deleting `repair-state.json` is a prohibited action the script cannot prevent.
+- `cls-fetch` retries a same-second full page once at `rn=50` before failing, distinguishes a feed that ends before the boundary from a saturated second, and rejects `--page-size` above 50 (the endpoint's effective maximum) instead of returning a misleading empty-page error.
+- Synced the DingTalk quoted-message rule with Feishu's (forwarded messages are preserved under the same display condition), defined `<plugin-dir>`/`<skill-dir>` at first use in the three source SKILL files, and unified the `<skill-directory>` placeholder to `<plugin-dir>` script paths.
 - Bumped `cosmos-fix-tools` to `0.2.0` for the scripted publish workflow, and `cosmos-knowledge-tools` to `0.1.4`, `cosmos-sources-tools` to `0.4.6`, and `cosmos-stockdata-tools` to `0.3.4` for the preflight-aware fix-report handoff.
 - Moved the fix-report readiness check before any packaged-file modification: every business Skill now runs the bundled local preflight first, so an incomplete setup stops the repair before an unattributable change, and a repair is never lost to a late sync failure — the report is always committed locally before the network is contacted.
 - Replaced the prose Git workflow in the fix-report SKILL with calls to the bundled publisher, and rewrote the corresponding prose-assertion test (`fix-report writes to a dedicated report repository and pushes` → `fix-report publishes through the bundled deterministic publisher`) because it encoded the superseded manual-command contract; behavioral coverage moved to `tests/fix-report-publish.test.mjs`.
