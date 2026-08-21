@@ -9,10 +9,15 @@ import {
 } from "./zsxq-image-tiles.mjs";
 import {
   beijingDateFromTimestamp,
+  beijingDisplayFromTimestamp,
   ZSXQ_TIME_ZONE,
 } from "./zsxq-time.mjs";
 
-export const SCHEMA_VERSION = 1;
+// Schema 2: source identity and inventory comparison use the sanitized
+// (query- and fragment-free) transport URL, so signed-URL rotation between
+// browser sessions no longer breaks resumed extraction. Schema-1 manifests
+// are rejected rather than silently migrated.
+export const SCHEMA_VERSION = 2;
 export const GENERATOR = "zsxq-fetch";
 
 const EXTRACTION_STATUSES = new Set(["present", "empty", "failed"]);
@@ -215,6 +220,13 @@ function normalizeExtraction(value, path) {
   };
 }
 
+function sanitizedTransportUrl(transportUrl) {
+  const parsed = new URL(transportUrl);
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.href;
+}
+
 async function normalizeSource(value, workspace, path) {
   const input = object(value ?? {}, path);
   assertNoUnexpectedKeys(
@@ -226,13 +238,9 @@ async function normalizeSource(value, workspace, path) {
   const transportUrl = input.transport_url
     ? httpUrl(input.transport_url, `${path}.transport_url`)
     : null;
-  let sanitizedSourceUrl = null;
-  if (transportUrl) {
-    const parsed = new URL(transportUrl);
-    parsed.search = "";
-    parsed.hash = "";
-    sanitizedSourceUrl = parsed.href;
-  }
+  const sanitizedSourceUrl = transportUrl
+    ? sanitizedTransportUrl(transportUrl)
+    : null;
   const binaryPath = input.binary_path
     ? await insideWorkspace(input.binary_path, workspace, `${path}.binary_path`)
     : null;
@@ -240,8 +248,10 @@ async function normalizeSource(value, workspace, path) {
   let sourceIdentity = "no-source-identity";
   if (platformId) {
     sourceIdentity = `platform-id:${platformId}`;
-  } else if (transportUrl) {
-    sourceIdentity = `url-sha256:${sha256Utf8(transportUrl)}`;
+  } else if (sanitizedSourceUrl) {
+    // Signed transport URLs rotate their query parameters between sessions,
+    // so identity is derived from the sanitized URL, never the signed form.
+    sourceIdentity = `url-sha256:${sha256Utf8(sanitizedSourceUrl)}`;
   } else if (binarySha256) {
     sourceIdentity = `binary-sha256:${binarySha256}`;
   }
@@ -1311,10 +1321,14 @@ function normalizeInventorySource(inputValue, path) {
     new Set(["platform_id", "transport_url"]),
     path,
   );
+  const transportUrl = sourceInput.transport_url
+    ? httpUrl(sourceInput.transport_url, `${path}.transport_url`)
+    : null;
   return {
     platform_id: optionalString(sourceInput.platform_id, `${path}.platform_id`),
-    transport_url: sourceInput.transport_url
-      ? httpUrl(sourceInput.transport_url, `${path}.transport_url`)
+    transport_url: transportUrl,
+    sanitized_source_url: transportUrl
+      ? sanitizedTransportUrl(transportUrl)
       : null,
   };
 }
@@ -1667,9 +1681,13 @@ export function assertTopicMatchesInventory(topic, inventoryTopic) {
     }
     if (
       inventoryAttachment.source.transport_url &&
-      attachment.source.transport_url !== inventoryAttachment.source.transport_url
+      attachment.source.sanitized_source_url !==
+        inventoryAttachment.source.sanitized_source_url
     ) {
-      fail(path, `attachment ${index + 1} transport URL differs from the source inventory`);
+      fail(
+        path,
+        `attachment ${index + 1} sanitized transport URL differs from the source inventory`,
+      );
     }
     if (
       attachment.type === "pdf" &&
@@ -1729,11 +1747,12 @@ export function assertTopicMatchesInventory(topic, inventoryTopic) {
         }
         if (
           inventoryChild.source.transport_url &&
-          child.source.transport_url !== inventoryChild.source.transport_url
+          child.source.sanitized_source_url !==
+            inventoryChild.source.sanitized_source_url
         ) {
           fail(
             path,
-            `attachment ${index + 1} embedded media ${childIndex + 1} transport URL differs from the source inventory`,
+            `attachment ${index + 1} embedded media ${childIndex + 1} sanitized transport URL differs from the source inventory`,
           );
         }
         if (child.type === "pdf" && child.filename !== inventoryChild.filename) {
@@ -2256,7 +2275,7 @@ export function renderReader(manifest) {
   const lines = [`# ${manifest.planet}｜${manifest.date}`, ""];
   for (const topic of manifest.topics) {
     lines.push(
-      `## 主题 ${topic.source_order}｜${topic.timestamp}｜${topic.author}`,
+      `## 主题 ${topic.source_order}｜${beijingDisplayFromTimestamp(topic.timestamp)}｜${topic.author}`,
       "",
     );
     lines.push(extractionReaderPayload(topic.body, "无正文"), "");

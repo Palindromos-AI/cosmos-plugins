@@ -108,7 +108,6 @@ const AUTOMATIC_REPAIR_ERROR_CODES = new Set([
   "DETAIL_FILE_GALLERY_ITEM_MISMATCH",
   "DETAIL_FIELD_MISMATCH",
   "DETAIL_IMAGE_GALLERY_ITEM_MISMATCH",
-  "DETAIL_IMAGE_GALLERY_OVERFLOW_UNSUPPORTED",
   "DETAIL_ROOT_MISMATCH",
   "EXPAND_CONTROL_CLICK_FAILED",
   "EXPAND_CONTROL_MISMATCH",
@@ -117,7 +116,6 @@ const AUTOMATIC_REPAIR_ERROR_CODES = new Set([
   "FILE_ATTACHMENT_OVERLAP",
   "FILE_GALLERY_ITEM_MISMATCH",
   "IMAGE_GALLERY_ITEM_MISMATCH",
-  "IMAGE_GALLERY_OVERFLOW_UNSUPPORTED",
   "TIMELINE_BODY_COUNT_DID_NOT_STABILIZE",
   "TIMELINE_CHRONOLOGY_INCONSISTENT",
   "TIMELINE_END_MARKER_MISMATCH",
@@ -152,6 +150,7 @@ export function inspectZsxqTimelinePage(input) {
   }
 
   const selectors = adapter.selectors;
+  const targetDate = typeof input.targetDate === "string" ? input.targetDate : undefined;
   const fail = (code, selectorCounts, extra = {}) => ({
     ok: false,
     contractVersion: adapter.version,
@@ -164,6 +163,16 @@ export function inspectZsxqTimelinePage(input) {
   const text = (element) => typeof element.innerText === "string"
     ? element.innerText
     : "";
+  const ownedTimestampText = (element) => {
+    if (typeof selectors.timestampReadCount === "string") {
+      return [...(element?.childNodes ?? [])]
+        .filter((node) => Number(node.nodeType) === 3)
+        .map((node) => typeof node.nodeValue === "string" ? node.nodeValue : "")
+        .join("")
+        .trim();
+    }
+    return element ? text(element).trim() : "";
+  };
   const sourceFor = (element) => {
     if (typeof element.currentSrc === "string" && element.currentSrc) {
       return element.currentSrc;
@@ -256,6 +265,24 @@ export function inspectZsxqTimelinePage(input) {
     });
   }
 
+  const stickyTopics = allTopics
+    .filter((topic) => topic.closest && topic.closest(selectors.stickyAncestor))
+    .map((topic) => {
+      const header = exactlyOne(topic, selectors.topicHeader);
+      const authors = header.count === 1
+        ? exactlyOne(header.elements[0], selectors.author)
+        : { elements: [], count: 0 };
+      const timestamps = header.count === 1
+        ? exactlyOne(header.elements[0], selectors.timestamp)
+        : { elements: [], count: 0 };
+      return {
+        author: authors.count === 1 ? text(authors.elements[0]).trim() : "",
+        displayed_timestamp: timestamps.count === 1
+          ? ownedTimestampText(timestamps.elements[0])
+          : "",
+      };
+    });
+
   const topicSnapshots = [];
   let pendingImageCount = 0;
   let brokenImageCount = 0;
@@ -280,13 +307,7 @@ export function inspectZsxqTimelinePage(input) {
       && timestamp.count === 1
       ? [...timestamp.elements[0].querySelectorAll(selectors.timestampReadCount)]
       : [];
-    const timestampText = typeof selectors.timestampReadCount === "string"
-      ? [...(timestamp.elements[0]?.childNodes ?? [])]
-          .filter((node) => Number(node.nodeType) === 3)
-          .map((node) => typeof node.nodeValue === "string" ? node.nodeValue : "")
-          .join("")
-          .trim()
-      : text(timestamp.elements[0]).trim();
+    const timestampText = ownedTimestampText(timestamp.elements[0]);
     if (
       author.count !== 1
       || timestamp.count !== 1
@@ -336,14 +357,15 @@ export function inspectZsxqTimelinePage(input) {
     }
 
     const images = [...talk.elements[0].querySelectorAll(selectors.image)];
-    pendingImageCount += images.filter((image) => image.complete !== true).length;
-    brokenImageCount += images.filter(
+    const topicPendingImages = images.filter((image) => image.complete !== true).length;
+    const topicBrokenImages = images.filter(
       (image) => image.complete === true
         && (Number(image.naturalWidth) < 1 || Number(image.naturalHeight) < 1),
     ).length;
     const imageGalleries = typeof selectors.imageGallery === "string"
       ? [...talk.elements[0].querySelectorAll(selectors.imageGallery)]
       : [];
+    let topicImageOverflow = false;
     let galleryImageTotal = 0;
     for (
       let galleryIndex = 0;
@@ -376,12 +398,10 @@ export function inspectZsxqTimelinePage(input) {
             ? node.textContent
             : "";
         if (/^\+\s*\d+\s*$/u.test(label.trim())) {
-          return fail("IMAGE_GALLERY_OVERFLOW_UNSUPPORTED", {
-            ...baseCounts,
-            topicIndex: index,
-            imageGallery: imageGalleries.length,
-            galleryIndex,
-          });
+          // A "+N" badge is normal platform UI for a topic whose image set
+          // exceeds the timeline preview. The topic is skipped and annotated
+          // by the collector instead of failing the whole timeline.
+          topicImageOverflow = true;
         }
       }
     }
@@ -478,6 +498,7 @@ export function inspectZsxqTimelinePage(input) {
         element: item,
         type: "pdf",
         filename,
+        fileOrdinal: fileIndex + 1,
       });
     }
     const ordered = [
@@ -542,9 +563,20 @@ export function inspectZsxqTimelinePage(input) {
                 ...(entry.href ? { transport_url: entry.href } : {}),
               },
               filename,
+              ...(entry.fileOrdinal === undefined
+                ? {}
+                : { file_ordinal: entry.fileOrdinal }),
             }),
       };
     });
+
+    if (
+      !topicImageOverflow
+      && (targetDate === undefined || timestampText.startsWith(`${targetDate} `))
+    ) {
+      pendingImageCount += topicPendingImages;
+      brokenImageCount += topicBrokenImages;
+    }
 
     const bodyText = text(body.elements[0]);
     topicSnapshots.push({
@@ -557,6 +589,7 @@ export function inspectZsxqTimelinePage(input) {
       image_count: images.length,
       image_gallery_count: imageGalleries.length,
       attachments,
+      ...(topicImageOverflow ? { image_overflow: true } : {}),
     });
   }
 
@@ -577,6 +610,7 @@ export function inspectZsxqTimelinePage(input) {
     topicCount: topicSnapshots.length,
     endReached: timelineEndMarkers.length === 1,
     topics: topicSnapshots,
+    stickyTopics,
     collapsedTopicIndices: topicSnapshots
       .filter((topic) => topic.collapsed)
       .map((topic) => topic.dom_index),
@@ -1415,6 +1449,7 @@ async function expandTargetDateUntilStable(tab, snapshot, options) {
     );
     current = await waitForStableTimeline(tab, {
       adapter: options.adapter,
+      targetDate: options.targetDate,
       timeoutMs: options.timeoutMs,
       pollIntervalMs: options.pollIntervalMs,
       phase: "timeline-expand",
@@ -1469,6 +1504,7 @@ function snapshotSignature(snapshot) {
     snapshot.planetName,
     snapshot.endReached,
     snapshot.topics,
+    snapshot.stickyTopics ?? null,
     snapshot.scroll.height,
   ]);
 }
@@ -1489,7 +1525,7 @@ async function waitForStableTimeline(tab, options = {}) {
     const snapshot = await evaluateWithNavigationRecovery(
       tab,
       inspectZsxqTimelinePage,
-      { adapter: options.adapter },
+      { adapter: options.adapter, targetDate: options.targetDate },
       { timeoutMs: Math.max(1, deadline - Date.now()), phase: options.phase },
     );
     if (!snapshot.ok) {
@@ -1609,9 +1645,18 @@ export function timelineCoverageBoundaryReached({
   return endReached === true || oldestPlatformDate < targetDate;
 }
 
-function normalizeTimelineTopics(snapshot) {
+function normalizeTimelineTopics(snapshot, targetDate) {
   const normalized = snapshot.topics.map((topic, index) => {
-    const parsedTimestamp = parseDisplayedTimestamp(topic.displayed_timestamp);
+    let parsedTimestamp;
+    let timestampFailure;
+    try {
+      parsedTimestamp = parseDisplayedTimestamp(topic.displayed_timestamp);
+    } catch (error) {
+      if (!(error instanceof ZsxqBrowserCollectionError)) {
+        throw error;
+      }
+      timestampFailure = error;
+    }
     const attachments = topic.attachments.map((attachment) => {
       if (attachment.type !== "image") {
         return attachment;
@@ -1624,51 +1669,149 @@ function normalizeTimelineTopics(snapshot) {
       source_order: index + 1,
       source: {},
       author: topic.author,
-      timestamp: parsedTimestamp.iso,
-      platform_date: parsedTimestamp.date,
+      timestamp: parsedTimestamp ? parsedTimestamp.iso : null,
+      platform_date: parsedTimestamp ? parsedTimestamp.date : null,
       body: topic.body === ""
         ? { status: "empty" }
         : { status: "present", payload: topic.body },
       image_count: topic.image_count,
-      image_count_evidence:
-        `${topic.image_count} img slot(s) across ${topic.image_gallery_count ?? 0} `
-        + "app-image-gallery gallery(ies) verified without an overflow indicator "
-        + "in the expanded topic container",
+      image_count_evidence: topic.image_overflow === true
+        ? `${topic.image_count} rendered img slot(s) beside an image-gallery `
+          + "overflow badge; the total image count is not proven and the topic "
+          + "is skipped"
+        : `${topic.image_count} img slot(s) across ${topic.image_gallery_count ?? 0} `
+          + "app-image-gallery gallery(ies) verified without an overflow indicator "
+          + "in the expanded topic container",
       attachments,
       browser_assets: topic.attachments
         .filter((attachment) => attachment.type === "image")
         .map((attachment) => attachment.browser_asset),
-      _timestampMilliseconds: parsedTimestamp.milliseconds,
+      displayed_timestamp: topic.displayed_timestamp,
+      dom_topic_index: topic.dom_topic_index,
+      image_overflow: topic.image_overflow === true,
+      _timestampMilliseconds: parsedTimestamp ? parsedTimestamp.milliseconds : null,
+      _timestampFailure: timestampFailure,
     };
   });
 
-  for (let index = 1; index < normalized.length; index += 1) {
+  let previousParsedIndex;
+  for (let index = 0; index < normalized.length; index += 1) {
+    if (normalized[index]._timestampMilliseconds === null) {
+      continue;
+    }
     if (
-      normalized[index]._timestampMilliseconds
-      > normalized[index - 1]._timestampMilliseconds
+      previousParsedIndex !== undefined
+      && normalized[index]._timestampMilliseconds
+        > normalized[previousParsedIndex]._timestampMilliseconds
     ) {
       throw new ZsxqBrowserCollectionError(
         "TIMELINE_CHRONOLOGY_INCONSISTENT",
         "timeline-validation",
         "Knowledge Planet non-pinned topics are not newest first",
-        { previousIndex: index - 1, currentIndex: index },
+        { previousIndex: previousParsedIndex, currentIndex: index },
       );
     }
+    previousParsedIndex = index;
   }
   return normalized;
+}
+
+function oldestParsedTopic(topics) {
+  for (let index = topics.length - 1; index >= 0; index -= 1) {
+    if (topics[index].platform_date !== null) {
+      return topics[index];
+    }
+  }
+  return undefined;
+}
+
+/**
+ * An unreadable displayed timestamp is tolerated only strictly below a parsed
+ * topic already older than the target date: from there it can no longer affect
+ * target-date membership, the lower boundary, or the proven chronology.
+ */
+function assertTimestampsDecidable(topics, targetDate) {
+  let crossed = false;
+  for (const topic of topics) {
+    if (topic._timestampFailure && !crossed) {
+      throw topic._timestampFailure;
+    }
+    if (topic.platform_date !== null && topic.platform_date < targetDate) {
+      crossed = true;
+    }
+  }
+}
+
+/**
+ * A pinned topic whose publication timestamp belongs to the target date must
+ * be proven present in the non-pinned stream (same author and instant);
+ * otherwise the day cannot be archived completely and the run fails closed.
+ * This code is intentionally not automatically repairable: it is a platform
+ * behavior question, not an adapter defect.
+ */
+function assertStickyTopicsProven(stickyTopics, allTopics, targetDate) {
+  let unparseableCount = 0;
+  let unmatchedCount = 0;
+  for (const sticky of stickyTopics ?? []) {
+    let parsed;
+    try {
+      parsed = parseDisplayedTimestamp(sticky.displayed_timestamp);
+    } catch (error) {
+      if (!(error instanceof ZsxqBrowserCollectionError)) {
+        throw error;
+      }
+      unparseableCount += 1;
+      continue;
+    }
+    if (parsed.date !== targetDate) {
+      continue;
+    }
+    const matched = allTopics.some(
+      (topic) => topic.author === sticky.author && topic.timestamp === parsed.iso,
+    );
+    if (!matched) {
+      unmatchedCount += 1;
+    }
+  }
+  if (unparseableCount !== 0 || unmatchedCount !== 0) {
+    throw new ZsxqBrowserCollectionError(
+      "STICKY_TARGET_DATE_UNSUPPORTED",
+      "timeline-validation",
+      "A pinned topic may belong to the target date without a proven non-pinned stream rendering",
+      {
+        stickyTopicCount: (stickyTopics ?? []).length,
+        stickyTimestampUnparseable: unparseableCount,
+        stickyTargetDateUnmatched: unmatchedCount,
+      },
+    );
+  }
 }
 
 function publicTopic(topic) {
   const result = { ...topic };
   delete result.platform_date;
+  delete result.displayed_timestamp;
+  delete result.image_overflow;
   delete result._timestampMilliseconds;
+  delete result._timestampFailure;
   return result;
 }
 
 function inventoryTopic(topic) {
   const result = publicTopic(topic);
   delete result.browser_assets;
-  return result;
+  delete result.dom_topic_index;
+  return {
+    ...result,
+    attachments: result.attachments.map((attachment) => {
+      if (attachment.file_ordinal === undefined) {
+        return attachment;
+      }
+      const entry = { ...attachment };
+      delete entry.file_ordinal;
+      return entry;
+    }),
+  };
 }
 
 export function buildZsxqRunnerInventory(topics) {
@@ -1830,6 +1973,7 @@ async function stabilizeTimelineBodies(tab, snapshot, options) {
       }
       current = await waitForStableTimeline(tab, {
         adapter: options.adapter,
+        targetDate: options.targetDate,
         timeoutMs: remaining,
         pollIntervalMs: options.pollIntervalMs,
         phase: options.phase,
@@ -1898,7 +2042,17 @@ async function saveCheckpoint(workspace, value) {
 
 function validateCheckpoint(checkpoint, input) {
   if (!checkpoint) {
-    return;
+    return { checkpoint: undefined, discarded: false };
+  }
+  if (
+    checkpoint.schema_version === 2
+    && typeof checkpoint.contract_version === "string"
+    && checkpoint.contract_version !== ZSXQ_BROWSER_CONTRACT.version
+  ) {
+    // The checkpoint is a consistency proof, not a transfer point. After a
+    // repair introduces a new adapter version, the retained checkpoint is
+    // discarded and the timeline is replayed from the top instead of failing.
+    return { checkpoint: undefined, discarded: true };
   }
   if (
     checkpoint.schema_version !== 2
@@ -1915,6 +2069,7 @@ function validateCheckpoint(checkpoint, input) {
       "Existing browser collector checkpoint belongs to another contract or run scope",
     );
   }
+  return { checkpoint, discarded: false };
 }
 
 function sanitizedUrl(value) {
@@ -1965,6 +2120,46 @@ function safeDiagnosticCounts(value) {
   return result;
 }
 
+function safeDiagnosticEvidence(value, depth = 0) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const result = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const safeKey = safeDiagnosticToken(
+      key,
+      /^[A-Za-z][A-Za-z0-9_.:-]{0,79}$/u,
+      undefined,
+    );
+    if (!safeKey) {
+      continue;
+    }
+    if (typeof entry === "boolean") {
+      result[safeKey] = entry;
+    } else if (Number.isInteger(entry) && entry >= 0 && entry <= 1_000_000) {
+      result[safeKey] = entry;
+    } else if (
+      typeof entry === "string"
+      && entry.length <= 80
+      && /^[A-Za-z0-9 _.,:;()[\]-]+$/u.test(entry)
+      && !/https?:/iu.test(entry)
+    ) {
+      result[safeKey] = entry;
+    } else if (
+      depth < 1
+      && entry !== null
+      && typeof entry === "object"
+      && !Array.isArray(entry)
+    ) {
+      const nested = safeDiagnosticEvidence(entry, depth + 1);
+      if (Object.keys(nested).length > 0) {
+        result[safeKey] = nested;
+      }
+    }
+  }
+  return result;
+}
+
 function safeDiagnosticOutline(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -2005,6 +2200,7 @@ export async function writeZsxqBrowserRepairHandoff(workspace, input) {
     ? input.diagnostic
     : {};
   const checkpointRetained = await readCheckpoint(workspace) !== undefined;
+  const failureEvidence = safeDiagnosticEvidence(diagnostic.failureEvidence);
   const payload = {
     schema_version: 2,
     status: "automatic-repair-required",
@@ -2021,6 +2217,9 @@ export async function writeZsxqBrowserRepairHandoff(workspace, input) {
         "UNKNOWN_BROWSER_CONTRACT_FAILURE",
       ),
       message: "The authenticated browser collector stopped because its strict contract was not proven.",
+      ...(Object.keys(failureEvidence).length > 0
+        ? { evidence: failureEvidence }
+        : {}),
     },
     page: {
       url: sanitizedUrl(diagnostic.pageUrl || input.pageUrl || ""),
@@ -2124,6 +2323,8 @@ async function automaticRepairHandoffResult(tab, input, error, pageUrl) {
   });
   return {
     status: "automatic-repair-required",
+    code: repairError.code,
+    phase: repairError.phase,
     notification: ZSXQ_REPAIR_NOTIFICATION,
     diagnostic_path: handoff.path,
     checkpoint_retained: handoff.payload.checkpoint.retained,
@@ -2202,8 +2403,10 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
       contract_version: adapter.version,
     };
   }
-  const checkpoint = await readCheckpoint(input.workspace);
-  validateCheckpoint(checkpoint, input);
+  const { checkpoint, discarded: checkpointDiscarded } = validateCheckpoint(
+    await readCheckpoint(input.workspace),
+    input,
+  );
   if (typeof tab.goto === "function") {
     await tab.goto(input.planetUrl);
   }
@@ -2215,12 +2418,27 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     { timeoutMs, phase: "timeline-top" },
   );
 
+  // The pinned area could unmount while the timeline scrolls, so the sticky
+  // safety check runs against the union of every stabilized snapshot's pinned
+  // topics, never only the final snapshot.
+  const observedStickyTopics = new Map();
+  const registerStickyTopics = (observed) => {
+    for (const sticky of observed.stickyTopics ?? []) {
+      observedStickyTopics.set(
+        `${sticky.author} ${sticky.displayed_timestamp}`,
+        sticky,
+      );
+    }
+  };
+
   let snapshot = await waitForStableTimeline(tab, {
     adapter,
+    targetDate: input.targetDate,
     timeoutMs,
     pollIntervalMs,
     phase: "timeline-top",
   });
+  registerStickyTopics(snapshot);
   if (snapshot.planetName !== input.planetName) {
     throw new ZsxqBrowserCollectionError(
       "PLANET_NAME_MISMATCH",
@@ -2239,7 +2457,7 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     );
   }
 
-  const mountedTopics = normalizeTimelineTopics(snapshot);
+  const mountedTopics = normalizeTimelineTopics(snapshot, input.targetDate);
   if (
     checkpoint
     && !exactCommonTopicPrefix(
@@ -2274,7 +2492,8 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     pollIntervalMs,
     phase: "timeline-body-cross-check",
   });
-  let allTopics = normalizeTimelineTopics(snapshot);
+  registerStickyTopics(snapshot);
+  let allTopics = normalizeTimelineTopics(snapshot, input.targetDate);
   if (
     checkpoint
     && !exactCommonTopicPrefix(
@@ -2304,7 +2523,11 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     );
   }
 
-  const topDate = allTopics[0].platform_date;
+  const topTopic = allTopics[0];
+  if (topTopic._timestampFailure) {
+    throw topTopic._timestampFailure;
+  }
+  const topDate = topTopic.platform_date;
   if (topDate <= input.targetDate && input.topBoundaryConfirmed !== true) {
     if (!checkpoint || allTopics.length >= checkpoint.topics.length) {
       await saveCheckpoint(input.workspace, {
@@ -2330,7 +2553,7 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
   while (
     allTopics.length < checkpointTopicCount
     || !timelineCoverageBoundaryReached({
-      oldestPlatformDate: allTopics.at(-1).platform_date,
+      oldestPlatformDate: oldestParsedTopic(allTopics).platform_date,
       targetDate: input.targetDate,
       endReached: snapshot.endReached,
     })
@@ -2347,6 +2570,7 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     await advanceZsxqTimelineOnTab(tab, adapter);
     const nextSnapshot = await waitForStableTimeline(tab, {
       adapter,
+      targetDate: input.targetDate,
       timeoutMs,
       pollIntervalMs,
       minimumTopicCount: previousTopics.length + 1,
@@ -2354,6 +2578,7 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
       progressAction: () => advanceZsxqTimelineOnTab(tab, adapter),
       progressRetryMs: Math.min(1_000, Math.max(10, pollIntervalMs * 4)),
     });
+    registerStickyTopics(nextSnapshot);
     snapshot = await stabilizeTimelineBodies(tab, nextSnapshot, {
       adapter,
       targetDate: input.targetDate,
@@ -2361,7 +2586,8 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
       pollIntervalMs,
       phase: "timeline-body-cross-check",
     });
-    allTopics = normalizeTimelineTopics(snapshot);
+    registerStickyTopics(snapshot);
+    allTopics = normalizeTimelineTopics(snapshot, input.targetDate);
     if (!exactTopicPrefix(
       previousTopics.map(checkpointComparableTopic),
       allTopics.map(checkpointComparableTopic),
@@ -2403,10 +2629,25 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     }
   }
 
+  assertTimestampsDecidable(allTopics, input.targetDate);
+  assertStickyTopicsProven(
+    [...observedStickyTopics.values()],
+    allTopics,
+    input.targetDate,
+  );
+
+  const skippedTopics = allTopics
+    .filter((topic) => topic.platform_date === input.targetDate && topic.image_overflow)
+    .map((topic) => ({
+      author: topic.author,
+      timestamp: topic.timestamp,
+      reason: "image-gallery-overflow",
+    }));
   const matchingTopics = allTopics
-    .filter((topic) => topic.platform_date === input.targetDate)
+    .filter((topic) => topic.platform_date === input.targetDate && !topic.image_overflow)
     .map(publicTopic)
     .map((topic, index) => ({ ...topic, source_order: index + 1 }));
+  const oldestParsed = oldestParsedTopic(allTopics);
   const coverage = {
     top_established: true,
     pending_new_content_loaded: true,
@@ -2416,9 +2657,12 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
     evidence:
       `Contract ${adapter.version}; visible top ${allTopics[0].timestamp}; `
       + (snapshot.endReached
-        ? `absolute timeline end after ${allTopics.at(-1).timestamp}; `
-        : `visible lower boundary ${allTopics.at(-1).timestamp}; `)
-      + `${scrollPasses} scroll pass(es)`,
+        ? `absolute timeline end after ${oldestParsed.timestamp}; `
+        : `visible lower boundary ${oldestParsed.timestamp}; `)
+      + `${scrollPasses} scroll pass(es)`
+      + (skippedTopics.length > 0
+        ? `; skipped ${skippedTopics.length} target-date topic(s) with an image-gallery overflow badge`
+        : ""),
   };
   const checkpointPath = await saveCheckpoint(input.workspace, {
     phase: "timeline-complete",
@@ -2441,8 +2685,20 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
         ...asset,
       }),
     )),
+    pdf_download_targets: matchingTopics.flatMap((topic) => topic.attachments
+      .filter((attachment) => attachment.type === "pdf"
+        && Number.isInteger(attachment.file_ordinal))
+      .map((attachment) => ({
+        topic_source_order: topic.source_order,
+        source_ordinal: attachment.source_ordinal,
+        file_ordinal: attachment.file_ordinal,
+        dom_topic_index: topic.dom_topic_index,
+        filename: attachment.filename,
+      }))),
+    skipped_topics: skippedTopics,
     scroll_passes: scrollPasses,
     checkpoint_path: checkpointPath,
+    checkpoint_discarded: checkpointDiscarded,
   };
 }
 

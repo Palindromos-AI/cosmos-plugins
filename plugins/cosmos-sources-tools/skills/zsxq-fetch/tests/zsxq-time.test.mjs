@@ -10,6 +10,7 @@ import {
 } from "../scripts/run-model.mjs";
 import {
   beijingDateFromTimestamp,
+  beijingDisplayFromTimestamp,
   currentBeijingDate,
   ZSXQ_TIME_ZONE,
   ZSXQ_UTC_OFFSET,
@@ -44,6 +45,26 @@ test("converts explicit Beijing and non-Beijing offsets by instant", () => {
     beijingDateFromTimestamp("2026-08-03T23:00:00-02:00"),
     "2026-08-04",
   );
+});
+
+test("renders Beijing display timestamps from any explicit offset", () => {
+  assert.equal(
+    beijingDisplayFromTimestamp("2026-08-14T16:30:00Z"),
+    "2026-08-15 00:30:00",
+  );
+  assert.equal(
+    beijingDisplayFromTimestamp("2026-08-15T12:30:00+08:00"),
+    "2026-08-15 12:30:00",
+  );
+  assert.equal(
+    beijingDisplayFromTimestamp("2026-08-15T13:30:00+09:00"),
+    "2026-08-15 12:30:00",
+  );
+  assert.equal(
+    beijingDisplayFromTimestamp("2026-08-15T12:30:00.500+08:00"),
+    "2026-08-15 12:30:00",
+  );
+  assert.throws(() => beijingDisplayFromTimestamp("2026-08-15 12:30"), TypeError);
 });
 
 test("accepts real leap days and rejects nonexistent calendar dates", () => {

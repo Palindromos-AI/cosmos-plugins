@@ -1,5 +1,23 @@
 # Gotchas
 
+## Excluding a DOM region silently discards whatever it happens to contain
+
+- **Symptom:** A ZSXQ topic pinned on its own publication day never reached the archive, while coverage still reported `complete`; the SKILL even claimed pinned topics were "treated by their publication timestamp".
+- **Root cause:** The collector excluded every `app-sticky-topic` subtree to keep the non-pinned stream strict, and nothing checked whether the excluded region hid target-date content; the exclusion count was recorded but never interpreted.
+- **How to avoid:** When a collector deliberately excludes a DOM region, prove that the exclusion cannot hide in-scope content (read the excluded region's own timestamps and require a matching stream rendering) or fail closed with an explicit non-repairable code; never let documentation claim behavior that the exclusion makes impossible.
+
+## A repair contract that mandates a version bump must not invalidate its own resume path
+
+- **Symptom:** After every automatic ZSXQ adapter repair, "resume from the retained checkpoint" was impossible: the collector always threw `CHECKPOINT_SCOPE_MISMATCH`.
+- **Root cause:** Checkpoint validation demanded the exact active `contract_version`, while step 4 of the repair playbook required each DOM repair to introduce a new immutable adapter version; the two contracts were written separately and their combination was never exercised.
+- **How to avoid:** Test the combined path whenever one contract's required action changes another contract's inputs. Treat the browser checkpoint as a consistency proof, not a transfer point: a version change discards it and replays from the top (`checkpoint_discarded: true`), while scope conflicts stay hard errors.
+
+## Hashing the signed form of a rotating URL freezes a session key into identity
+
+- **Symptom:** Resuming extraction against a frozen ZSXQ inventory was always rejected after the browser session changed, because every signed image/PDF URL had rotated its query signature.
+- **Root cause:** `source_identity` hashed the full signed transport URL and inventory comparison required full-URL equality — even though the checkpoint layer already stripped queries for exactly this reason, so the codebase knew the volatility and applied the fix in only one layer.
+- **How to avoid:** Derive identity and every equality comparison from the stable sanitized form; keep volatile signed values only as transient acquisition inputs. When one layer already strips a volatile component, apply the same rule at every other comparison layer, and version the schema so old artifacts are rejected instead of silently reinterpreted.
+
 ## A blocklist protects only the destinations someone thought of
 
 - **Symptom:** stockdata `download --force` could overwrite `~/.zshrc`, another Cosmos plugin's `runtime.json`, or any file sitting next to the token file; only the exact token path, this plugin's config directory, and the plugin tree were protected.

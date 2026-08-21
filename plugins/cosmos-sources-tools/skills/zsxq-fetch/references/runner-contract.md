@@ -49,10 +49,36 @@ Use `scripts/zsxq-browser-collector.mjs` from the persistent authenticated
 browser-control session before `record-coverage` and `record-inventory`.
 `collectZsxqTimelineRangeWithAutoRepair` returns runner-ready `coverage` and an
 `inventory` object shaped exactly as `{ "topics": [...] }`, plus separate
-`browser_assets` used for exact image capture. Pass the complete returned
-`inventory` object to `record-inventory`; do not pass `inventory.topics`. It
-atomically checkpoints the loaded timeline inside the run workspace. Do not add
-`browser_assets` to the runner inventory JSON.
+session-local records that never enter the runner inventory JSON:
+
+- `browser_assets` — exact image-capture inputs (signed sources, load state,
+  dimensions).
+- `pdf_download_targets` — one entry per inventoried timeline file-card PDF
+  with `topic_source_order`, `source_ordinal`, `file_ordinal`,
+  `dom_topic_index`, and `filename`. Pass `dom_topic_index` as `topicDomIndex`
+  and `file_ordinal` as `fileOrdinal` to `downloadZsxqTimelinePdfOnTab`; these
+  indices are valid for the same browser session, and a stale index fails
+  loudly with `PDF_FILE_IDENTITY_MISMATCH`.
+- `skipped_topics` — target-date topics excluded by decision because their
+  image gallery showed a `+N` overflow badge (author, timestamp, reason). The
+  coverage evidence records the skip count; report each entry to the user.
+- `checkpoint_discarded` — `true` when a retained schema-2 checkpoint carrying
+  another adapter contract version was discarded and the timeline was replayed
+  from the top.
+
+Pass the complete returned `inventory` object to `record-inventory`; do not
+pass `inventory.topics`. The collector atomically checkpoints the loaded
+timeline inside the run workspace.
+
+Pinned topics are archived only through their normal position in the
+non-pinned stream: the collector reads the pinned area's authors and
+timestamps, and stops with `STICKY_TARGET_DATE_UNSUPPORTED` when a pinned
+timestamp belongs to the target date without a matching stream topic, or
+cannot be read at all. That code is intentionally outside the automatic-repair
+set. Displayed timestamps must parse strictly wherever they can affect the
+result (the top, every target-date candidate, everything above the proven
+crossing); an unreadable timestamp strictly below the crossing is tolerated.
+Image-readiness gating applies only to target-date topics.
 
 The active `zsxq-web-angular-v6` adapter preserves the immutable v1 through v5
 contracts for rollback. v2 added exact `app-file-gallery` PDF-card inventory: it
@@ -61,10 +87,12 @@ position, and a file card is accepted only when it has one direct PDF icon and
 one non-empty `.pdf` filename and contains no anchor; an empty, malformed,
 unknown, or overlapping file-card structure fails closed. v3 additionally proves
 the end of every image set: each `app-image-gallery` must account for every
-counted `img`, an empty gallery is a transient loading state, and a leaf element
-whose text matches a `+N` overflow badge fails closed instead of silently
-undercounting `image_count`. v3 also applies both the file-card and the
-image-gallery contracts to Knowledge Planet detail pages:
+counted `img` and an empty gallery is a transient loading state. A leaf element
+whose text matches a `+N` overflow badge marks that timeline topic as an
+explicit `skipped_topics` exclusion instead of silently undercounting
+`image_count` (on a detail page the same badge remains the direct
+`DETAIL_IMAGE_GALLERY_OVERFLOW_UNSUPPORTED` error). v3 also applies both the
+file-card and the image-gallery contracts to Knowledge Planet detail pages:
 `collectZsxqDetailWithAutoRepair` returns `files` (each with `type: "pdf"`,
 `file_ordinal`, `dom_ordinal`, `filename`, and `platform_id` when exposed)
 beside `images` (each with `image_ordinal` and `dom_ordinal`), so a linked
@@ -99,6 +127,14 @@ fragments first. A resumed run therefore survives signed-URL rotation between
 browser sessions; topic identity remains author, timestamp, body, and the
 ordered attachment structure. The live `inventory` and `browser_assets` still
 carry the current full transport URLs for acquisition inside the workspace.
+
+The checkpoint is a consistency proof, not a transfer point. A retained
+checkpoint whose adapter `contract_version` differs from the active one — the
+normal situation right after an automatic repair introduced a new adapter
+version — is discarded and the timeline is replayed from the top; the result
+reports `checkpoint_discarded: true`. A checkpoint for another planet, date,
+or URL, or with an unknown schema, remains a direct
+`CHECKPOINT_SCOPE_MISMATCH` error.
 
 Before calling it, visibly clear every search, tag, owner-only, member, and other
 timeline filter, then pass `filtersClearedConfirmed: true`. If the flag is absent,
@@ -248,7 +284,7 @@ Images, webpages, and PDFs use:
 }
 ```
 
-All fields are optional individually. Supply every available value so the runner can enforce identity priority: platform ID, exact transport-URL hash, binary hash, then no source identity. The raw transport URL remains only in the temporary manifest; the runner emits at most a query-free URL into the temporary audit ledger and emits no image/PDF resource URL into the reader report.
+All fields are optional individually. Supply every available value so the runner can enforce identity priority: platform ID, then the SHA-256 of the sanitized (query- and fragment-free) transport URL, then binary hash, then no source identity. Manifest schema 2 derives identity and performs every inventory transport-URL comparison over the sanitized form, so signed-URL rotation between sessions never breaks a resumed run; schema-1 manifests are rejected, never migrated. The raw transport URL remains only in the temporary manifest; the runner emits at most a query-free URL into the temporary audit ledger and emits no image/PDF resource URL into the reader report.
 
 ### Image
 
@@ -373,4 +409,33 @@ Before rendering, it resolves and re-hashes every checkpointed source binary and
 - Unproven coverage writes nothing and retains the workspace for diagnosis or resumption.
 - Successful finalization removes the audit ledger, cache state, raw transport URLs, and the entire marked run workspace.
 
+Reader-report topic headings render each topic's timestamp converted to
+Beijing time as `YYYY-MM-DD HH:mm:ss`, matching the deployment-wide Beijing
+policy; the audit ledger and the hidden marker keep the original ISO instants.
+
 The runner refuses unmarked outputs, cross-planet or cross-date replacement, any write beside or over a newer canonical snapshot, concurrent edits, missing image slots, invalid PDF page sequences, duplicate keys, and content paths outside the dedicated workspace.
+
+Same-path rerun rules enforced by the safe writer:
+
+- Replace a file only when its hidden marker contains `zsxq-fetch` and its
+  `planet`, `planet_url`, and `date` exactly match the current run. Never
+  replace a canonical `complete` file with an `incomplete` result, and refuse
+  to overwrite an unmarked file.
+- Refuse to replace a generated report whose `snapshot_at` is later than the
+  current run, and refuse the entire write (canonical or `.incomplete.md`)
+  when an existing canonical report has a later `snapshot_at`: an older
+  resumed run must not overwrite or shadow newer collected content.
+- If the default path already belongs to a same-named planet with a different
+  `planet_url`, or any other scope field differs, refuse replacement and ask
+  the user for an explicit output path instead of adding a suffix.
+- The writer records the existing target's identity, size, and nanosecond
+  modification time, writes the full replacement to a uniquely named sibling
+  temporary file, re-verifies the target immediately before an atomic rename,
+  and holds one canonical-output-path transaction from the snapshot check
+  through stale-partial cleanup, so concurrent runs targeting the same archive
+  serialize. After a `complete` canonical write, a sibling `.incomplete.md` is
+  removed only when its marker matches the same scope, its `snapshot_at` is
+  not newer, and it is unchanged at the moment of removal; the result reports
+  whether a stale partial was removed.
+- If validation or rename fails, only the exact sibling temporary file created
+  for the attempt is removed; it is retained solely when needed for diagnosis.

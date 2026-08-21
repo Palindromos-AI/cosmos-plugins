@@ -207,14 +207,18 @@ function topicElement(topic, selectors) {
       tagName: "IMG",
       order: imageFixture.order,
       complete: imageFixture.complete,
-      naturalWidth: 1200,
-      naturalHeight: 800,
+      naturalWidth: imageFixture.broken ? 0 : 1200,
+      naturalHeight: imageFixture.broken ? 0 : 800,
       currentSrc: "https://images.example/image.png?signature=secret",
       attributes: { "data-image-id": "image-1" },
     });
+    const descendants = [image];
+    if (imageFixture.overflow) {
+      descendants.push(new FakeElement({ innerText: "+3" }));
+    }
     const gallery = new FakeElement()
       .set(selectors.imageWithinGallery, [image])
-      .set(selectors.imageGalleryDescendant, [image]);
+      .set(selectors.imageGalleryDescendant, descendants);
     talk.set(selectors.image, [image]).set(selectors.imageGallery, [gallery]);
   }
   if (webFixture) {
@@ -246,9 +250,13 @@ function topicElement(topic, selectors) {
   return element;
 }
 
-function installTimelineFixture({ imageComplete = true } = {}) {
+function installTimelineFixture({
+  imageComplete = true,
+  topics: fixtureTopics = fixture.topics,
+  endReached = fixture.end_reached,
+} = {}) {
   const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
-  const topics = fixture.topics.map((topic) => topicElement({
+  const topics = fixtureTopics.map((topic) => topicElement({
     ...topic,
     attachments: topic.attachments.map((attachment) => attachment.type === "image"
       ? { ...attachment, complete: imageComplete }
@@ -258,7 +266,7 @@ function installTimelineFixture({ imageComplete = true } = {}) {
   const timelineEnd = new FakeElement({ innerText: "没有更多了" });
   const timelineRoot = new FakeElement().set(
     selectors.timelineEnd,
-    fixture.end_reached ? [timelineEnd] : [],
+    endReached ? [timelineEnd] : [],
   );
   const documentFixture = new FakeElement();
   documentFixture
@@ -277,8 +285,47 @@ function installTimelineFixture({ imageComplete = true } = {}) {
   };
   globalThis.window = {
     getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }),
+    scrollTo: () => {},
   };
   return { documentFixture, topics };
+}
+
+function snapshotTab(snapshot) {
+  return {
+    goto: async () => undefined,
+    url: async () => "https://wx.zsxq.com/group/fixture",
+    playwright: {
+      evaluate: async (operation) => {
+        if (operation.name === "prepareZsxqTimelinePage") return undefined;
+        if (operation.name === "inspectZsxqTimelinePage") return snapshot;
+        if (operation.name === "extractZsxqTopicBodies") {
+          return snapshot.topics.map((topic, domIndex) => ({
+            dom_index: domIndex,
+            body: topic.body,
+          }));
+        }
+        throw new Error(`Unexpected operation: ${operation.name}`);
+      },
+      locator: () => {
+        throw new Error("No locator interaction is expected for a stable fixture");
+      },
+    },
+  };
+}
+
+function collectorInput(workspace, overrides = {}) {
+  return {
+    planetName: fixture.planet_name,
+    planetUrl: "https://wx.zsxq.com/group/fixture",
+    targetDate: "2026-08-15",
+    filtersClearedConfirmed: true,
+    topBoundaryConfirmed: true,
+    workspace,
+    timeoutMs: 100,
+    pollIntervalMs: 1,
+    maxScrolls: 0,
+    ...overrides,
+  };
 }
 
 test("v4 isolates the owned timestamp text and preserves timeline safety boundaries", () => {
@@ -471,6 +518,59 @@ test("successful collector result is accepted directly by the runner inventory c
   assert.equal(result.contract_version, "zsxq-web-angular-v6");
   assert.equal(normalizeInventory(result.inventory).recorded, true);
   assert.equal(result.inventory.topics.length, 2);
+  assert.equal(result.checkpoint_discarded, false);
+  assert.deepEqual(result.skipped_topics, []);
+  assert.deepEqual(result.pdf_download_targets, [{
+    topic_source_order: 1,
+    source_ordinal: 3,
+    file_ordinal: 1,
+    dom_topic_index: 1,
+    filename: "fixture.pdf",
+  }]);
+
+  // Pin the exact checkpoint topic byte shape: prefix comparison against
+  // checkpoints written by earlier releases relies on identical JSON key sets
+  // and insertion order, so any drift must fail here instead of in the field.
+  const checkpoint = JSON.parse(await readFile(
+    path.join(workspace, "browser-collector-checkpoint.json"),
+    "utf8",
+  ));
+  assert.equal(checkpoint.schema_version, 2);
+  assert.equal(JSON.stringify(checkpoint.topics[0]), JSON.stringify({
+    source_order: 1,
+    source: {},
+    author: "Newest Author",
+    timestamp: "2026-08-15T07:30:00+08:00",
+    body: { status: "present", payload: "Dedicated newest body" },
+    image_count: 1,
+    image_count_evidence:
+      "1 img slot(s) across 1 app-image-gallery gallery(ies) verified "
+      + "without an overflow indicator in the expanded topic container",
+    attachments: [
+      {
+        type: "web",
+        source_ordinal: 1,
+        source: {},
+        original_url: "https://example.com/article",
+      },
+      {
+        type: "image",
+        source_ordinal: 2,
+        image_ordinal: 1,
+        topic_association_evidence: "expanded topic 1 app-image-gallery slot 1",
+        source: {
+          platform_id: "image-1",
+          transport_url: "https://images.example/image.png",
+        },
+      },
+      {
+        type: "pdf",
+        source_ordinal: 3,
+        source: { platform_id: "file-1" },
+        filename: "fixture.pdf",
+      },
+    ],
+  }));
 });
 
 test("repair handoff requires automatic repair without user approval", async (t) => {
@@ -570,6 +670,17 @@ test("automatic repair routing is limited to DOM contracts and collector defects
       inputFor(workspace),
     );
     assert.equal(result.status, "automatic-repair-required");
+    assert.equal(result.code, "TOPIC_FIELD_MISMATCH");
+    assert.equal(result.phase, "timeline-top");
+    const handoff = JSON.parse(await readFile(
+      path.join(workspace, "browser-repair-handoff.json"),
+      "utf8",
+    ));
+    assert.deepEqual(handoff.failure.evidence, {
+      code: "TOPIC_FIELD_MISMATCH",
+      transient: false,
+      selectorCounts: { topic: 1 },
+    });
   });
 
   await t.test("collector ReferenceError returns automatic repair", async () => {
@@ -876,4 +987,455 @@ test("v5 refuses a hidden official download control", async () => {
     (error) => error.code === "PDF_DOWNLOAD_CONTROL_MISMATCH",
   );
   assert.equal(downloadControl.clicks, 0);
+});
+
+test("a same-day sticky topic missing from the stream fails explicitly without repair", async (t) => {
+  const topics = structuredClone(fixture.topics);
+  topics[0].timestamp = "2026-08-15 06:00";
+  installTimelineFixture({ topics });
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+  assert.deepEqual(snapshot.stickyTopics, [
+    { author: "Pinned Author", displayed_timestamp: "2026-08-15 06:00" },
+  ]);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-sticky-unmatched-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await assert.rejects(
+    collectZsxqTimelineRangeWithAutoRepair(snapshotTab(snapshot), collectorInput(workspace)),
+    (error) => error.code === "STICKY_TARGET_DATE_UNSUPPORTED",
+  );
+  await assert.rejects(readFile(path.join(workspace, "browser-repair-handoff.json")));
+});
+
+test("a same-day sticky topic proven present in the stream keeps the run complete", async (t) => {
+  const topics = structuredClone(fixture.topics);
+  topics[0].timestamp = "2026-08-15 06:00";
+  topics.push({
+    author: "Pinned Author",
+    timestamp: "2026-08-15 06:00",
+    read_count: "阅读人数 99",
+    body: "Pinned body rendered in the stream",
+    sticky: false,
+    attachments: [],
+  });
+  installTimelineFixture({ topics });
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-sticky-matched-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const result = await collectZsxqTimelineRangeWithAutoRepair(
+    snapshotTab(snapshot),
+    collectorInput(workspace),
+  );
+  assert.equal(result.status, "complete");
+  assert.equal(result.inventory.topics.length, 3);
+});
+
+test("an unreadable sticky timestamp fails explicitly without repair", async (t) => {
+  const topics = structuredClone(fixture.topics);
+  topics[0].timestamp = "置顶";
+  installTimelineFixture({ topics });
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-sticky-unreadable-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await assert.rejects(
+    collectZsxqTimelineRangeWithAutoRepair(snapshotTab(snapshot), collectorInput(workspace)),
+    (error) => error.code === "STICKY_TARGET_DATE_UNSUPPORTED",
+  );
+});
+
+test("a checkpoint from another contract version is discarded and replayed", async (t) => {
+  installTimelineFixture();
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(snapshot.ok, true);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-checkpoint-discard-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const checkpointPath = path.join(workspace, "browser-collector-checkpoint.json");
+  await writeFile(checkpointPath, `${JSON.stringify({
+    schema_version: 2,
+    contract_version: "zsxq-web-angular-v5",
+    phase: "timeline-complete",
+    planet_name: fixture.planet_name,
+    planet_url: "https://wx.zsxq.com/group/fixture",
+    target_date: "2026-08-15",
+    scroll_passes: 0,
+    topics: [{ bogus: true }],
+  })}\n`, "utf8");
+
+  const result = await collectZsxqTimelineRangeWithAutoRepair(
+    snapshotTab(snapshot),
+    collectorInput(workspace),
+  );
+  assert.equal(result.status, "complete");
+  assert.equal(result.checkpoint_discarded, true);
+  const saved = JSON.parse(await readFile(checkpointPath, "utf8"));
+  assert.equal(saved.contract_version, "zsxq-web-angular-v6");
+  assert.equal(saved.phase, "timeline-complete");
+});
+
+test("a same-version checkpoint with another scope remains a direct error", async (t) => {
+  installTimelineFixture();
+  const snapshot = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-checkpoint-scope-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await writeFile(path.join(workspace, "browser-collector-checkpoint.json"), `${JSON.stringify({
+    schema_version: 2,
+    contract_version: "zsxq-web-angular-v6",
+    phase: "timeline-complete",
+    planet_name: fixture.planet_name,
+    planet_url: "https://wx.zsxq.com/group/fixture",
+    target_date: "2026-08-14",
+    scroll_passes: 0,
+    topics: [],
+  })}\n`, "utf8");
+
+  await assert.rejects(
+    collectZsxqTimelineRangeWithAutoRepair(snapshotTab(snapshot), collectorInput(workspace)),
+    (error) => error.code === "CHECKPOINT_SCOPE_MISMATCH",
+  );
+});
+
+test("an image-gallery overflow topic is skipped with an annotation instead of failing", async (t) => {
+  const topics = structuredClone(fixture.topics);
+  topics[1].attachments = [{ type: "image", order: 20, complete: true, overflow: true }];
+  installTimelineFixture({ topics });
+  const snapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(snapshot.ok, true);
+  assert.equal(snapshot.topics[0].image_overflow, true);
+  assert.equal(snapshot.topics[1].image_overflow, undefined);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-overflow-skip-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const result = await collectZsxqTimelineRangeWithAutoRepair(
+    snapshotTab(snapshot),
+    collectorInput(workspace),
+  );
+  assert.equal(result.status, "complete");
+  assert.equal(result.inventory.topics.length, 1);
+  assert.equal(result.inventory.topics[0].author, "Older Author");
+  assert.deepEqual(result.skipped_topics, [{
+    author: "Newest Author",
+    timestamp: "2026-08-15T07:30:00+08:00",
+    reason: "image-gallery-overflow",
+  }]);
+  assert.match(result.coverage.evidence, /skipped 1 target-date topic/);
+});
+
+test("a broken image outside the target date no longer blocks readiness", async () => {
+  const topics = [
+    {
+      author: "Newest Author",
+      timestamp: "2026-08-15 07:30",
+      read_count: "阅读人数 1",
+      body: "Dedicated newest body",
+      sticky: false,
+      attachments: [],
+    },
+    {
+      author: "Older Author",
+      timestamp: "2026-08-14 20:00",
+      read_count: "阅读人数 2",
+      body: "Older day body",
+      sticky: false,
+      attachments: [{ type: "image", order: 20, complete: true, broken: true }],
+    },
+  ];
+  installTimelineFixture({ topics, endReached: false });
+
+  const unscoped = inspectZsxqTimelinePage({ adapter: ZSXQ_BROWSER_CONTRACT });
+  assert.equal(unscoped.ok, false);
+  assert.equal(unscoped.failure.code, "TIMELINE_IMAGES_NOT_READY");
+
+  const snapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(snapshot.ok, true);
+});
+
+test("a broken image inside the target date still fails readiness", () => {
+  const topics = [
+    {
+      author: "Newest Author",
+      timestamp: "2026-08-15 07:30",
+      read_count: "阅读人数 1",
+      body: "Dedicated newest body",
+      sticky: false,
+      attachments: [{ type: "image", order: 20, complete: true, broken: true }],
+    },
+  ];
+  installTimelineFixture({ topics, endReached: true });
+
+  const snapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(snapshot.ok, false);
+  assert.equal(snapshot.failure.code, "TIMELINE_IMAGES_NOT_READY");
+});
+
+test("an unreadable timestamp below the proven crossing point is tolerated", async (t) => {
+  const topics = [
+    {
+      author: "Newest Author",
+      timestamp: "2026-08-15 07:30",
+      read_count: "阅读人数 1",
+      body: "Dedicated newest body",
+      sticky: false,
+      attachments: [],
+    },
+    {
+      author: "Older Author",
+      timestamp: "2026-08-14 20:00",
+      read_count: "阅读人数 2",
+      body: "Older day body",
+      sticky: false,
+      attachments: [],
+    },
+    {
+      author: "Relative Author",
+      timestamp: "3小时前",
+      read_count: "阅读人数 3",
+      body: "Relative stamp body",
+      sticky: false,
+      attachments: [],
+    },
+  ];
+  installTimelineFixture({ topics, endReached: false });
+  const snapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(snapshot.ok, true);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-relative-below-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const result = await collectZsxqTimelineRangeWithAutoRepair(
+    snapshotTab(snapshot),
+    collectorInput(workspace),
+  );
+  assert.equal(result.status, "complete");
+  assert.equal(result.inventory.topics.length, 1);
+  assert.equal(result.inventory.topics[0].author, "Newest Author");
+});
+
+test("an unreadable timestamp above the crossing point still requires repair", async (t) => {
+  const topics = [
+    {
+      author: "Newest Author",
+      timestamp: "2026-08-15 07:30",
+      read_count: "阅读人数 1",
+      body: "Dedicated newest body",
+      sticky: false,
+      attachments: [],
+    },
+    {
+      author: "Relative Author",
+      timestamp: "3小时前",
+      read_count: "阅读人数 2",
+      body: "Relative stamp body",
+      sticky: false,
+      attachments: [],
+    },
+    {
+      author: "Older Author",
+      timestamp: "2026-08-14 20:00",
+      read_count: "阅读人数 3",
+      body: "Older day body",
+      sticky: false,
+      attachments: [],
+    },
+  ];
+  installTimelineFixture({ topics, endReached: false });
+  const snapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(snapshot.ok, true);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-relative-above-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const result = await collectZsxqTimelineRangeWithAutoRepair(
+    snapshotTab(snapshot),
+    collectorInput(workspace),
+  );
+  assert.equal(result.status, "automatic-repair-required");
+  assert.equal(result.code, "TIMESTAMP_FORMAT_MISMATCH");
+});
+
+test("an unreadable top timestamp still requires repair", async (t) => {
+  const topics = [
+    {
+      author: "Relative Author",
+      timestamp: "刚刚",
+      read_count: "阅读人数 1",
+      body: "Relative stamp body",
+      sticky: false,
+      attachments: [],
+    },
+    {
+      author: "Older Author",
+      timestamp: "2026-08-14 20:00",
+      read_count: "阅读人数 2",
+      body: "Older day body",
+      sticky: false,
+      attachments: [],
+    },
+  ];
+  installTimelineFixture({ topics, endReached: false });
+  const snapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(snapshot.ok, true);
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-relative-top-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const result = await collectZsxqTimelineRangeWithAutoRepair(
+    snapshotTab(snapshot),
+    collectorInput(workspace),
+  );
+  assert.equal(result.status, "automatic-repair-required");
+  assert.equal(result.code, "TIMESTAMP_FORMAT_MISMATCH");
+});
+
+test("a pinned topic seen in an earlier snapshot still fails after the pinned area unmounts", async (t) => {
+  const stickyTopic = {
+    author: "Pinned Author",
+    timestamp: "2026-08-15 06:00",
+    read_count: "阅读人数 99",
+    body: "Pinned body must be excluded",
+    sticky: true,
+    attachments: [],
+  };
+  const newestTopic = {
+    author: "Newest Author",
+    timestamp: "2026-08-15 07:30",
+    read_count: "阅读人数 1",
+    body: "Dedicated newest body",
+    sticky: false,
+    attachments: [],
+  };
+  const olderSameDayTopic = {
+    author: "Older Author",
+    timestamp: "2026-08-15 07:29",
+    read_count: "阅读人数 2",
+    body: "Dedicated older body",
+    sticky: false,
+    attachments: [],
+  };
+  const olderDayTopic = {
+    author: "Older Day Author",
+    timestamp: "2026-08-14 20:00",
+    read_count: "阅读人数 3",
+    body: "Older day body",
+    sticky: false,
+    attachments: [],
+  };
+
+  installTimelineFixture({
+    topics: [stickyTopic, newestTopic, olderSameDayTopic],
+    endReached: false,
+  });
+  const firstSnapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(firstSnapshot.ok, true);
+  assert.equal(firstSnapshot.stickyTopics.length, 1);
+
+  installTimelineFixture({
+    topics: [newestTopic, olderSameDayTopic, olderDayTopic],
+    endReached: true,
+  });
+  const secondSnapshot = inspectZsxqTimelinePage({
+    adapter: ZSXQ_BROWSER_CONTRACT,
+    targetDate: "2026-08-15",
+  });
+  assert.equal(secondSnapshot.ok, true);
+  assert.deepEqual(secondSnapshot.stickyTopics, []);
+
+  let current = firstSnapshot;
+  const tab = {
+    goto: async () => undefined,
+    url: async () => "https://wx.zsxq.com/group/fixture",
+    playwright: {
+      evaluate: async (operation) => {
+        if (operation.name === "prepareZsxqTimelinePage") return undefined;
+        if (operation.name === "advanceZsxqTimelinePage") {
+          current = secondSnapshot;
+          return { top: 0, height: 2400, viewport: 800 };
+        }
+        if (operation.name === "inspectZsxqTimelinePage") return current;
+        if (operation.name === "extractZsxqTopicBodies") {
+          return current.topics.map((topic, domIndex) => ({
+            dom_index: domIndex,
+            body: topic.body,
+          }));
+        }
+        throw new Error(`Unexpected operation: ${operation.name}`);
+      },
+      locator: (selector) => {
+        if (selector !== "body") {
+          throw new Error(`Unexpected locator: ${selector}`);
+        }
+        return { count: async () => 1, press: async () => {} };
+      },
+    },
+  };
+
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-sticky-unmounted-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await assert.rejects(
+    collectZsxqTimelineRangeWithAutoRepair(
+      tab,
+      collectorInput(workspace, { maxScrolls: 1 }),
+    ),
+    (error) => error.code === "STICKY_TARGET_DATE_UNSUPPORTED",
+  );
+});
+
+test("a detail image-gallery overflow is a direct error rather than a repair target", async (t) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "zsxq-detail-overflow-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const tab = {
+    playwright: {
+      evaluate: async (operation) => {
+        if (operation.name === "waitForZsxqDetailReady") return {};
+        if (operation.name === "inspectZsxqDetailPage") {
+          return {
+            ok: false,
+            failure: {
+              code: "DETAIL_IMAGE_GALLERY_OVERFLOW_UNSUPPORTED",
+              transient: false,
+              selectorCounts: { imageGallery: 1 },
+            },
+          };
+        }
+        throw new Error(`Unexpected operation: ${operation.name}`);
+      },
+      locator: () => ({}),
+    },
+    url: async () => "https://wx.zsxq.com/topic/123",
+  };
+
+  await assert.rejects(
+    collectZsxqDetailWithAutoRepair(tab, {
+      url: "https://wx.zsxq.com/topic/123",
+      workspace,
+      timeoutMs: 10,
+      pollIntervalMs: 1,
+    }),
+    (error) => error.code === "DETAIL_IMAGE_GALLERY_OVERFLOW_UNSUPPORTED",
+  );
+  await assert.rejects(readFile(path.join(workspace, "browser-repair-handoff.json")));
 });

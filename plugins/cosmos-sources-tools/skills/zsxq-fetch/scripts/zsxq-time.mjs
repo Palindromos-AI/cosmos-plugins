@@ -85,6 +85,20 @@ export function beijingDateFromTimestamp(timestamp) {
   return beijingDateFromMilliseconds(timestampMilliseconds(timestamp));
 }
 
+/** Render the represented instant as a Beijing-time `YYYY-MM-DD HH:mm:ss` display value. */
+export function beijingDisplayFromTimestamp(timestamp) {
+  const beijingInstant = new Date(
+    timestampMilliseconds(timestamp) + ZSXQ_UTC_OFFSET_MILLISECONDS,
+  );
+  const iso = beijingInstant.toISOString();
+  if (!/^\d{4}-\d{2}-\d{2}T/u.test(iso)) {
+    throw new TypeError(
+      "instant must resolve to a four-digit Beijing calendar year",
+    );
+  }
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)}`;
+}
+
 export function currentBeijingDate(nowMilliseconds = Date.now()) {
   return beijingDateFromMilliseconds(nowMilliseconds);
 }

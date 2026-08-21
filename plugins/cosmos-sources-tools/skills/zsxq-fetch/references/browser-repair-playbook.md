@@ -14,9 +14,23 @@ access controls, changing unrelated files, or expanding the collection scope.
 Obtain any separately required authorization for those actions.
 
 The diagnostic package intentionally contains only the contract version, phase,
-query-free page path, selector counts, application tag counts, and a shallow
-tag/class outline. Never add topic text, author names, signed URLs, query strings,
-fragments, cookies, storage values, headers, or screenshots to it.
+failure code, sanitized failure evidence (counts, booleans, and short
+identifier-safe strings), query-free page path, selector counts, application
+tag counts, and a shallow tag/class outline. Never add topic text, author
+names, signed URLs, query strings, fragments, cookies, storage values, headers,
+or screenshots to it.
+
+## Marketplace change reporting during repair
+
+Before editing any packaged file, run the fix-report readiness preflight
+exactly as the SKILL's "Marketplace change reporting" section requires
+(`publish-report.mjs preflight` against `<cosmos-workspace-root>/fix-reports`);
+if `$fix-report` is unavailable or the preflight fails, stop before modifying
+packaged content and give the user the exact prerequisite. After the repair's
+required validations pass, `$fix-report` runs automatically for its report-only
+commit and push. A failed repair whose packaged edits were rolled back must
+still be reported: the modification attempt and its rollback are part of the
+record, so invoke `$fix-report` for it as well instead of omitting the report.
 
 ## Evidence-driven repair
 
@@ -44,8 +58,12 @@ fragments, cookies, storage values, headers, or screenshots to it.
    still matches the automatic repair's output; never overwrite a concurrent edit.
    Report every file that cannot be restored safely and leave the run resumable.
 8. Resume automatically from `browser-collector-checkpoint.json` and the runner's `status`
-   checkpoint. Re-freeze an inventory only by starting a new runner workspace;
-   never hand-edit a frozen manifest.
+   checkpoint. When the repair introduced a new adapter version, the collector
+   discards the retained browser checkpoint (it is a consistency proof bound to
+   one contract version, not a transfer point), replays the timeline from the
+   top, and reports `checkpoint_discarded: true`; the runner checkpoint still
+   resumes normally. Re-freeze an inventory only by starting a new runner
+   workspace; never hand-edit a frozen manifest.
 9. Report the reproduced cause, evidence, changed adapter version, validation,
    and resumed position. Do not commit or merge unless the user separately
    authorized version-control changes.
