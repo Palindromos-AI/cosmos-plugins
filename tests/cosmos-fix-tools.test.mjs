@@ -73,7 +73,7 @@ test("fix-report includes only marketplace content changes", async () => {
   assert.match(skill, /must not trigger|do not invoke|out of scope/i);
 });
 
-test("fix-report writes to a dedicated report repository and pushes", async () => {
+test("fix-report publishes through the bundled deterministic publisher", async () => {
   const skill = await read("plugins/cosmos-fix-tools/skills/fix-report/SKILL.md");
   const readme = await read("README.md");
 
@@ -82,34 +82,32 @@ test("fix-report writes to a dedicated report repository and pushes", async () =
   assert.match(skill, /git repository/i);
   assert.match(readme, /git init [^\n]*<cosmos-workspace-root>\/fix-reports/i);
   assert.match(skill, /never[^\n]*git init[^\n]*<cosmos-workspace-root>(?!\/fix-reports)/i);
-  for (const command of [
-    "rev-parse --show-toplevel",
-    "status --porcelain",
-    "add -- <report-relative-path>",
-    "commit -m",
-    "push <upstream-remote>",
-  ]) {
-    assert.match(
-      skill,
-      new RegExp(`git -C [^\\n]*fix-reports[^\\n]*${command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
-    );
-  }
-  assert.match(skill, /configured upstream|configured remote/i);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*rev-list --left-right --count HEAD\.\.\.\@\{upstream\}/);
-  assert.match(skill, /require exactly `0 0`/i);
+
+  // Readiness is checked before any packaged file changes, without network.
+  assert.match(skill, /publish-report\.mjs"? preflight --repo/);
+  assert.match(skill, /before modifying any marketplace-distributed file/i);
+  assert.match(skill, /local-only|contacts no network/i);
+
+  // The publish workflow is deterministic script behavior, not prose steps.
+  assert.match(skill, /publish-report\.mjs"? publish/);
+  assert.match(skill, /--report/);
+  assert.match(skill, /Cosmos Fix Report <fix-report@cosmos-plugins\.invalid>/);
+  assert.match(skill, /`pushed`/);
+  assert.match(skill, /`committed-not-pushed`/);
+  assert.match(skill, /`remote-ahead`/);
+  assert.match(skill, /pull --ff-only/);
+  assert.match(skill, /argument-array|argument array|shell-quote/i);
+  assert.match(skill, /validate[^\n]*(?:remote|ref)|(?:remote|ref)[^\n]*validate/i);
+
+  assert.match(skill, /report-template\.md/);
+  assert.match(skill, /--forbid/);
+  assert.match(skill, /delete the rejected report file/i);
+  assert.match(skill, /fix-report-runtime\.mjs"? (?:show-config|configure)/);
   assert.match(skill, /automatically|without (?:additional )?(?:approval|confirmation)/i);
   assert.doesNotMatch(skill, /ask the user for one confirmation|confirmation is denied|per-run confirmation/i);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*hash-object -- <report-relative-path>/);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*rev-list --count <base-commit>\.\.HEAD/);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*rev-parse HEAD\^/);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*diff-tree --no-commit-id --name-only/);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*rev-parse <report-commit>:<report-relative-path>/);
-  assert.match(skill, /git -C [^\n]*fix-reports[^\n]*push <upstream-remote> <report-commit>:<upstream-merge-ref>/);
-  assert.doesNotMatch(skill, /git -C [^\n]*fix-reports[^\n]*push <upstream-remote> HEAD:/);
+  assert.match(skill, /never force-push/i);
   assert.match(skill, /non-zero exit|fails|failure/i);
   assert.match(skill, /token|cookie|signed URL|private source content/i);
-  assert.match(skill, /argument array|shell-quote|shell-safe/i);
-  assert.match(skill, /validate[^\n]*(?:remote|ref)|(?:remote|ref)[^\n]*validate/i);
 });
 
 test("fix-report writes only confined, non-symlink report paths", async (t) => {
@@ -282,6 +280,7 @@ test("every existing marketplace skill requires fix-report for packaged changes"
         skill,
         /before (?:changing|modifying) any marketplace-distributed file, confirm `?\$fix-report`? is available/i,
       );
+      assert.match(skill, /publish-report\.mjs"? preflight/);
       assert.match(skill, /stop before modifying packaged content/i);
       assert.match(skill, /restart (?:the )?(?:ChatGPT desktop|app)/i);
       assert.match(skill, /new (?:Codex )?task/i);

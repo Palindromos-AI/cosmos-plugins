@@ -13,6 +13,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 // plugin caches and user checkouts may be symlinked).
 const CLI_SCRIPTS = [
   "plugins/cosmos-fix-tools/skills/fix-report/scripts/write-report.mjs",
+  "plugins/cosmos-fix-tools/skills/fix-report/scripts/publish-report.mjs",
+  "plugins/cosmos-fix-tools/skills/fix-report/scripts/fix-report-runtime.mjs",
   "plugins/cosmos-sources-tools/scripts/workspace-runtime.mjs",
   "plugins/cosmos-sources-tools/skills/cls-fetch/scripts/fetch-cls.mjs",
   "plugins/cosmos-sources-tools/skills/cls-fetch/scripts/list-candidates.mjs",

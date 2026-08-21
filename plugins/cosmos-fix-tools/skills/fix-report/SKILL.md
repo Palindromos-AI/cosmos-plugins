@@ -5,7 +5,7 @@ description: Automatically record, verify, commit, and push a sanitized modifica
 
 # Fix Report
 
-Create an auditable report for a change to content shipped by the Cosmos Plugins marketplace. Store the report in the dedicated `fix-reports` Git repository, then automatically commit and push only that report without additional user approval.
+Create an auditable report for a change to content shipped by the Cosmos Plugins marketplace. Store the report in the dedicated `fix-reports` Git repository, then commit and push only that report — without additional user approval — through the bundled deterministic publisher.
 
 ## Decide whether to run
 
@@ -29,17 +29,22 @@ Writing, committing, or pushing a report inside `fix-reports` never triggers ano
 ## Resolve the report repository
 
 1. Reuse the shared Cosmos workspace root already resolved by the parent skill or task.
-2. If no root is available, ask the user for it. Do not infer one from unrelated paths.
-3. Use exactly `<cosmos-workspace-root>/fix-reports` as the report repository.
-4. Require the user to have created that exact directory, initialized only it as a dedicated Git repository, and completed its user-configured remote, branch, upstream, and authentication setup once before automatic reporting begins. The remote is a public repository owned by the user; the user has shared its URL with the marketplace maintainer, who reads reports there, so every report must satisfy the privacy rules below.
-5. Run `git -C "<cosmos-workspace-root>/fix-reports" rev-parse --show-toplevel` and require its result to be the same directory as `<cosmos-workspace-root>/fix-reports` (Git returns the canonical path, which may differ textually when an ancestor such as `/tmp` or a synced folder is a symbolic link). The `fix-reports` directory itself must not be a symbolic link. Use the returned canonical path wherever `"<cosmos-workspace-root>/fix-reports"` appears in the commands below.
-6. Require an attached current branch and resolve its already configured upstream remote and merge ref. Do not infer or create either value. Validate the remote name against `^[A-Za-z0-9][A-Za-z0-9._-]*$`; validate that the merge ref starts with `refs/heads/` and passes `git check-ref-format`.
-7. Run `git -C "<cosmos-workspace-root>/fix-reports" fetch <upstream-remote>`, then run `git -C "<cosmos-workspace-root>/fix-reports" rev-list --left-right --count HEAD...@{upstream}` and require exactly `0 0`. This prevents an earlier local commit or an unseen remote commit from being included in the report push.
-8. Run `git -C "<cosmos-workspace-root>/fix-reports" status --porcelain` and require the report repository to be clean before writing.
+2. If no root is available, run `node "<skill-dir>/scripts/fix-report-runtime.mjs" show-config` and use the recorded root. Never read another plugin's binding or infer a root from unrelated paths.
+3. If neither exists, ask the user for one durable absolute root, then record it once with `node "<skill-dir>/scripts/fix-report-runtime.mjs" configure --workspace-root <absolute-root>`. When a root resolved by the parent skill is available but this plugin has no binding yet, record that root the same way and tell the user it was recorded. A recorded root that conflicts with the requested one requires the user's explicit reconfiguration authorization and `--reconfigure`; never rebind silently.
+4. Use exactly `<cosmos-workspace-root>/fix-reports` as the report repository. The remote is a public repository owned by the user; the user has shared its URL with the marketplace maintainer, who reads reports there, so every report must satisfy the privacy rules below.
+5. Require the user to have completed the one-time setup from the marketplace README: create an empty public GitHub repository and share its URL with the maintainer, run `git init "<cosmos-workspace-root>/fix-reports"`, create an initial commit, rename the branch to `main`, add that repository as `origin`, and `git push -u origin main` with working non-interactive authentication. This skill validates the user-configured upstream remote and merge ref but never initializes or reconfigures a repository, adds or changes a remote, switches branches, alters credentials, or chooses a hosting provider.
 
-Pass every Git operand through an argument-array API when one is available. If the execution tool accepts only a shell command string, shell-quote every dynamic path, remote, ref, revision, and commit message as one data argument. Never concatenate resolved Git values into shell syntax or execute them through `eval`.
+Never run `git init` at `<cosmos-workspace-root>` or in `sources/`, `stockdata/`, any parent directory, or any neighboring workspace directory. The user may run `git init "<cosmos-workspace-root>/fix-reports"` only during one-time setup.
 
-Never run `git init` at `<cosmos-workspace-root>` or in `sources/`, `stockdata/`, any parent directory, or any neighboring workspace directory. The user may run `git init "<cosmos-workspace-root>/fix-reports"` only during one-time setup. This skill does not initialize or reconfigure a repository, add or change a remote, switch branches, alter credentials, or choose a hosting provider. If setup is missing, stop and give the user the exact prerequisite: create an empty public GitHub repository and share its URL with the maintainer, then run `git init "<cosmos-workspace-root>/fix-reports"`, create an initial commit, rename the branch to `main`, add that repository as `origin`, and `git push -u origin main` (the marketplace README lists these commands). After setup exists, do not request further approval.
+## Preflight before packaged changes
+
+Before modifying any marketplace-distributed file, the parent task runs:
+
+```bash
+node "<skill-dir>/scripts/publish-report.mjs" preflight --repo "<cosmos-workspace-root>/fix-reports"
+```
+
+The preflight is local-only and contacts no network. It verifies that the directory is the dedicated Git repository at its own top level and not a symbolic link, that `HEAD` is an attached branch with at least one commit, that the branch's configured upstream remote and merge ref validate against strict patterns, and that the working tree is clean. On failure, stop before modifying packaged content and give the user the exact prerequisite from the script's error message. A `pendingCommits` count greater than zero is not a failure: earlier reports whose push failed are delivered together with the next publish.
 
 ## Confirm the packaged change
 
@@ -47,58 +52,56 @@ Inspect only the packaged paths changed by the current parent task. Do not diagn
 
 ## Write the report
 
-Prepare the complete sanitized Markdown in memory, then send those exact non-empty bytes to the bundled deterministic writer on standard input:
+Follow `references/report-template.md`. Prepare the complete sanitized Markdown in memory, then send those exact non-empty bytes to the bundled deterministic writer on standard input:
 
 ```bash
 node "<skill-dir>/scripts/write-report.mjs" \
   --repo "<cosmos-workspace-root>/fix-reports" \
   --plugin "<plugin-name>" \
-  --scope "<skill-or-plugin-scope>"
+  --scope "<skill-or-plugin-scope>" \
+  --forbid "<business-identifier>"
 ```
 
-Pass the report through the process's standard-input channel, not shell interpolation. The script accepts exactly one `--repo`, `--plugin`, and `--scope` argument, rejects unknown or repeated arguments, accepts lowercase hyphen-separated plugin and scope slugs, rejects traversal and symbolic-link directories, verifies canonical containment, and writes all bytes through the same exclusive no-follow file handle. It uses UTC plus a random eight-hex identifier and never reopens or overwrites the final path.
+Pass the report through the process's standard-input channel, not shell interpolation. Repeat `--forbid` once for each business identifier the parent task handled, such as a group name, planet name, or account name. The script accepts exactly one `--repo`, `--plugin`, and `--scope` argument, rejects unknown or repeated arguments, accepts lowercase hyphen-separated plugin and scope slugs, rejects traversal and symbolic-link directories, verifies canonical containment, and writes all bytes through the same exclusive no-follow file handle. It mechanically rejects content containing the actual workspace-root path, the home directory, or any `--forbid` identifier. It uses UTC plus a random eight-hex identifier and never reopens or overwrites the final path.
 
-Use the returned `absolutePath` and `relativePath` as the only report paths. Use `cosmos-plugins` as the plugin name for repository-wide metadata and `plugin` as the scope when the change is not limited to one Skill. Stop on any write failure. Before staging, require the report to remain a regular non-symbolic-link file under the same canonical report repository and require it to be non-empty.
+Use the returned `absolutePath` and `relativePath` as the only report paths. Use `cosmos-plugins` as the plugin name for repository-wide metadata and `plugin` as the scope when the change is not limited to one Skill. Stop on any write failure.
 
 Include:
 
 - plugin name, packaged version, skill or plugin scope, UTC timestamp, and final status;
 - why the change was needed, expected behavior, observed behavior, and reproduction steps when applicable;
 - changed packaged paths and a concise description of each change;
-- before and after commit identifiers when available;
 - a concise diff or minimal unified diff only when it contains no private user content;
 - validation commands, exit codes, and results;
 - known limitations and whether unrelated local modifications existed.
 
 ## Protect user data
 
-Never include private source content, messages, documents, screenshots, full DOM captures, retrieved user data, credentials, tokens, cookies, account identifiers, signed URLs, secret queries, or absolute local paths. Replace necessary local details with stable placeholders such as `<cosmos-workspace-root>` and `<marketplace-root>`.
+Never include private source content, messages, documents, screenshots, full DOM captures, retrieved user data, credentials, tokens, cookies, account identifiers, signed URLs, secret queries, or absolute local paths. Replace necessary local details with stable placeholders such as `<cosmos-workspace-root>` and `<marketplace-root>`. The writer's mechanical checks are a floor, not the full privacy rule.
 
-Read the completed report back and verify its path, scope, factual accuracy, and privacy before staging it.
+Read the completed report back and verify its path, scope, factual accuracy, and privacy before publishing it. If the read-back or privacy verification fails, delete the rejected report file and never reuse its path; the publisher refuses to run while stray files remain in the report repository.
 
-## Commit and push the report
+## Publish the report
 
-When the report repository is correctly configured, execute this final workflow automatically. Do not ask for confirmation or wait for another user request:
+When the report repository is correctly configured, execute this automatically. Do not ask for confirmation or wait for another user request:
 
-1. Run `git -C "<cosmos-workspace-root>/fix-reports" status --porcelain` and require the new report to be the repository's only change.
-2. Record `<base-commit>` from `git -C "<cosmos-workspace-root>/fix-reports" rev-parse HEAD` and `<expected-report-blob>` from `git -C "<cosmos-workspace-root>/fix-reports" hash-object -- <report-relative-path>` after the report's read-back and privacy verification.
-3. Stage the exact relative path with `git -C "<cosmos-workspace-root>/fix-reports" add -- <report-relative-path>`.
-4. Run `git -C "<cosmos-workspace-root>/fix-reports" diff --cached --name-only` and require exactly that one report path. Require `git -C "<cosmos-workspace-root>/fix-reports" rev-parse :<report-relative-path>` to equal `<expected-report-blob>`.
-5. Run `git -C "<cosmos-workspace-root>/fix-reports" commit -m "Add <plugin-name> <scope> fix report"`.
-6. Require `git -C "<cosmos-workspace-root>/fix-reports" rev-list --count <base-commit>..HEAD` to equal `1` and `git -C "<cosmos-workspace-root>/fix-reports" rev-parse HEAD^` to equal `<base-commit>`, then record the current commit as `<report-commit>`. This rejects hooks that advance `HEAD` by another commit.
-7. Run `git -C "<cosmos-workspace-root>/fix-reports" diff-tree --no-commit-id --name-only -r <report-commit>` and require exactly the report path. Require `git -C "<cosmos-workspace-root>/fix-reports" rev-parse <report-commit>:<report-relative-path>` to equal `<expected-report-blob>`. These checks reject hooks that alter the committed report.
-8. Immediately before pushing, require `git -C "<cosmos-workspace-root>/fix-reports" rev-parse HEAD` to equal `<report-commit>` and `git -C "<cosmos-workspace-root>/fix-reports" status --porcelain` to be empty.
-9. Run `git -C "<cosmos-workspace-root>/fix-reports" push <upstream-remote> <report-commit>:<upstream-merge-ref>` to push only the verified report commit to the preverified upstream branch. Use `git -C "<cosmos-workspace-root>/fix-reports" ls-remote <upstream-remote> <upstream-merge-ref>` to verify the remote merge ref resolves to `<report-commit>` before reporting success.
+```bash
+node "<skill-dir>/scripts/publish-report.mjs" publish \
+  --repo "<cosmos-workspace-root>/fix-reports" \
+  --report "<report-relative-path>"
+```
+
+The publisher passes every dynamic Git value — path, remote, ref, revision, message — as one argument-array operand and never through shell syntax. It validates the configured upstream remote name and merge ref against strict patterns, requires the report to be the repository's only change, stages exactly that path, commits with the fixed identity `Cosmos Fix Report <fix-report@cosmos-plugins.invalid>`, and verifies the commit's parent, tree, and report blob before and after the commit, rejecting hooks that advance `HEAD` or alter the committed report. Only then does it contact the network: it fetches the upstream, verifies that every unpushed commit touches only report paths, pushes them to the configured merge ref, and confirms the remote merge ref now equals the local head.
+
+Interpret the publisher's JSON result:
+
+- `pushed`: the report was delivered; include the report path and commit identifier in the final response.
+- `committed-not-pushed`: the report and its commit are preserved locally, and delivery resumes with the next publish (or the `push` command) once the condition in `reason` is resolved — a network failure resolves itself; a foreign or merge commit in the backlog needs the user's manual cleanup. Report the commit identifier and the exact reason; do not claim remote delivery.
+- `remote-ahead`: the remote has commits this machine has not seen. Nothing is pushed; give the user the reported `git pull --ff-only` instruction and rerun afterwards.
+- any pre-commit validation failure: nothing was committed; the report file is preserved; report the exact error.
 
 Never force-push, amend, change remotes, switch branches, stage unrelated files, or push the modified marketplace source repository.
 
-Surface failures explicitly:
-
-- If writing fails, do not commit.
-- If committing fails, preserve the report and return its path plus the exact error.
-- If any post-commit parent, path, blob, HEAD, or working-tree verification fails, do not push and return the local commit identifier plus the exact mismatch.
-- If pushing fails, preserve the local commit and return its commit identifier plus the exact error. Do not claim remote delivery.
-
 ## Return the result
 
-Report the report path, commit identifier, configured upstream, and push result. State that only the report was committed. Keep the final summary free of private user data.
+Report the report path, commit identifier, configured upstream, and push status. State that only the report was committed. Keep the final summary free of private user data.

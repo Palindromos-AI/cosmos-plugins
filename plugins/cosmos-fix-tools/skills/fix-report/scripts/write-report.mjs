@@ -6,6 +6,7 @@ import {
   open,
   realpath,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +68,36 @@ async function ensureDirectChildDirectory(parent, name, label) {
   return canonical;
 }
 
+// Mechanical privacy floor: the report must never carry the actual workspace
+// root, the home directory, or a caller-supplied business identifier; the
+// sanctioned replacement is a placeholder such as `<cosmos-workspace-root>`.
+function requireSanitizedContent(content, { repo, canonicalRepo, forbidden }) {
+  const text = typeof content === "string"
+    ? content
+    : Buffer.from(content).toString("utf8");
+  const localPaths = new Set(
+    [path.dirname(path.resolve(repo)), path.dirname(canonicalRepo), homedir()]
+      .filter((candidate) => candidate.length >= 5),
+  );
+  for (const localPath of localPaths) {
+    if (text.includes(localPath)) {
+      throw new Error(
+        `report content must not contain the local path ${localPath}; replace it with <cosmos-workspace-root> or another placeholder`,
+      );
+    }
+  }
+  for (const identifier of forbidden) {
+    if (typeof identifier !== "string" || identifier.length === 0) {
+      throw new Error("forbidden identifiers must be non-empty strings");
+    }
+    if (text.includes(identifier)) {
+      throw new Error(
+        `report content must not contain the forbidden identifier "${identifier}"; replace it with a neutral placeholder`,
+      );
+    }
+  }
+}
+
 export async function writeReport({
   repo,
   plugin,
@@ -74,6 +105,7 @@ export async function writeReport({
   content,
   timestamp = utcTimestamp(),
   id = randomBytes(4).toString("hex"),
+  forbidden = [],
 }) {
   if (typeof repo !== "string" || !path.isAbsolute(repo)) {
     throw new Error("report repository must be an absolute path");
@@ -94,6 +126,7 @@ export async function writeReport({
   }
 
   const canonicalRepo = await requireCanonicalDirectory(repo, "report repository");
+  requireSanitizedContent(content, { repo, canonicalRepo, forbidden });
   const pluginDirectory = await ensureDirectChildDirectory(
     canonicalRepo,
     safePlugin,
@@ -143,6 +176,10 @@ export function parseArguments(argv) {
       throw new Error("expected --repo, --plugin, and --scope argument pairs");
     }
     const name = flag.slice(2);
+    if (name === "forbid") {
+      (values.forbid ??= []).push(value);
+      continue;
+    }
     if (!CLI_ARGUMENTS.has(name)) {
       throw new Error(`unknown argument: ${flag}`);
     }
@@ -175,6 +212,7 @@ async function main() {
     plugin: args.plugin,
     scope: args.scope,
     content,
+    forbidden: args.forbid ?? [],
   });
   process.stdout.write(`${JSON.stringify(report)}\n`);
 }

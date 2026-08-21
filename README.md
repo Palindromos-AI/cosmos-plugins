@@ -89,7 +89,7 @@ Packages this Skill:
 
   3. Confirm that `git push` works without prompts (SSH key or a stored credential helper). The Skill pushes automatically and cannot answer interactive prompts.
 
-  After setup, the Skill automatically commits and pushes each report by running every Git command explicitly against `fix-reports`; it never initializes or reconfigures a repository and never commits or pushes the modified marketplace source repository.
+  After setup, the Skill publishes reports through its bundled deterministic publisher: before any packaged repair it runs a local readiness preflight and stops with the missing prerequisite if setup is incomplete; each report is committed with the fixed identity `Cosmos Fix Report <fix-report@cosmos-plugins.invalid>` before the network is contacted, and a report whose push failed is delivered automatically with the next one. It never initializes or reconfigures a repository and never commits or pushes the modified marketplace source repository.
 
 Marketplace, plugin, and Skill upgrades replace capability code only. They never invoke workspace configuration or own, migrate, overwrite, or delete the sources or stockdata plugin's external `runtime.json` or user workspace content.
 

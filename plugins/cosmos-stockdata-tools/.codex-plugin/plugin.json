@@ -1,6 +1,6 @@
 {
   "name": "cosmos-stockdata-tools",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Run and incrementally grow per-user China stock-data scripts with a generic SuperMind runtime.",
   "author": {
     "name": "Jason"

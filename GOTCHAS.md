@@ -1,5 +1,11 @@
 # Gotchas
 
+## Checking report readiness after the repair loses the record
+
+- **Symptom:** A packaged repair succeeds, but the report repository turns out to be missing, unborn, or out of sync; the report is never written, or one failed push leaves every later report permanently blocked behind a "synchronized branch" requirement.
+- **Root cause:** Readiness and synchronization were verified only at reporting time, after the packaged change already existed, and the sync check required exactly `0 0` so a locally preserved commit from an earlier push failure could never be delivered.
+- **How to avoid:** Run the local-only `publish-report.mjs preflight` before modifying any packaged file and stop on its exact prerequisite; always commit the report locally before contacting the network; treat "ahead of upstream" as deliverable backlog (after verifying every unpushed commit touches only report paths), and only "behind upstream" as a stop condition.
+
 ## A CLI invoked through a symbolic link exits 0 and does nothing
 
 - **Symptom:** `node <symlinked-dir>/scripts/<tool>.mjs ...` prints nothing and exits 0; the same command through the real path works. Codex's own plugin cache and user checkouts can be symlinked.
@@ -16,7 +22,7 @@
 
 - **Symptom:** A report is generated for ordinary user data changes, lands outside `fix-reports`, contains unrelated local content, or a repair workflow pushes the modified marketplace source repository.
 - **Root cause:** The reporting boundary was inferred from the active task instead of its changed packaged paths, report components were concatenated without traversal or symbolic-link checks, dynamic Git operands were treated as shell syntax, or the report repository and source repository were treated as one Git operation.
-- **How to avoid:** Preflight `fix-report` before modifying marketplace-distributed files so a missing companion stops before any unattributable change; invoke it only for packaged files changed by the current parent task, write every report through `write-report.mjs` standard input and its single exclusive handle, exclude every external workspace and runtime artifact, initialize only `<cosmos-workspace-root>/fix-reports`, validate and shell-quote every dynamic Git operand, require a clean synchronized report repository, verify the report path and blob before and after the automatic commit, push the verified commit hash to the preverified upstream branch, and never commit or push the modified marketplace source repository. The only authorization exception is the separately scoped report-only commit.
+- **How to avoid:** Preflight `fix-report` before modifying marketplace-distributed files so a missing companion stops before any unattributable change; invoke it only for packaged files changed by the current parent task, write every report through `write-report.mjs` standard input and its single exclusive handle, exclude every external workspace and runtime artifact, initialize only `<cosmos-workspace-root>/fix-reports`, and publish through the bundled deterministic publisher, which passes every dynamic Git operand as argument-array data, requires a clean repository (unpushed report commits are deliverable backlog), verifies the report path and blob before and after the automatic commit, pushes only verified report-only commits to the preverified upstream branch, and never commits or pushes the modified marketplace source repository. The only authorization exception is the separately scoped report-only commit.
 
 ## A collector result can be semantically correct but use the wrong runner envelope
 

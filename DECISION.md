@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-19 — Script the fix-report publish workflow and check readiness before packaged changes
+
+- **Clarification:** The commit-and-push contract is unchanged in intent — automatic, report-only, hash-verified, never touching the marketplace source repository — but its execution moves from prose steps into the bundled deterministic publisher.
+- **Context:** Roughly twenty prose Git steps were executed by model improvisation on every report, could not be tested, and checked repository readiness only after the packaged change, so a sync or push failure lost the record and one failed push blocked all later reports.
+- **Decision:** Business Skills run the bundled local-only `preflight` before modifying any packaged file and stop with the exact missing prerequisite. `publish` commits the report locally with the fixed identity `Cosmos Fix Report <fix-report@cosmos-plugins.invalid>` and full hook-tamper verification before contacting the network; a failed push preserves the commit and the next publish delivers the backlog after verifying every unpushed commit touches only report paths; unseen remote commits stop the push with a `git pull --ff-only` instruction. `write-report.mjs` mechanically rejects content containing the workspace-root path, the home directory, or a `--forbid` identifier. `cosmos-fix-tools` keeps its own `~/.config/cosmos-fix-tools/runtime.json` binding so a knowledge-tools-only installation resolves the workspace root without reading another plugin's binding.
+- **Context:** The prose-assertion test that pinned the manual Git commands was rewritten for the new contract; behavioral guarantees now live in offline tests against a bare remote.
+
 ## 2026-08-18 — Deliver fix reports through a customer-owned public repository, fix the Python environment to `cosmos`, and license the marketplace as proprietary
 
 - **Clarification:** The marketplace currently serves a single customer. The fix-report channel, the Python environment, and the license are set for that deployment; revisit only if the customer base changes. This supersedes the 2026-08-13 requirement that each stockdata user chooses a micromamba environment.

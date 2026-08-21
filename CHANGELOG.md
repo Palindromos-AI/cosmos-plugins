@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A deterministic `fix-report` publisher (`publish-report.mjs`) with `preflight`, `publish`, and `push` commands: local-only readiness checks before any packaged change, argument-array Git calls, a fixed commit identity (`Cosmos Fix Report <fix-report@cosmos-plugins.invalid>`), hook-tamper verification, report-only backlog delivery after a failed push, and a refusal to push over unseen remote commits. Covered by `tests/fix-report-publish.test.mjs` against a bare remote.
+- A per-user `cosmos-fix-tools` binding (`fix-report-runtime.mjs`, `~/.config/cosmos-fix-tools/runtime.json`) so knowledge-tools-only installations have a durable workspace root; schema-1 only, atomic writes, no silent rebinding, canonicalized temporary-root rejection.
+- A `references/report-template.md` skeleton every report follows.
+- Mechanical privacy floor in `write-report.mjs`: content containing the actual workspace-root path, the home directory, or any repeatable `--forbid` business identifier is rejected before writing.
 - A proprietary `LICENSE` for the marketplace and a README license section; third-party-derived portions stay under their own licenses.
 - README setup steps for the fix-report channel: the customer creates a public GitHub repository, shares its URL with the maintainer, and connects `<cosmos-workspace-root>/fix-reports` to it with an initial commit and upstream.
 - README prerequisites for the fixed Python environment: micromamba, uv, and a one-time `micromamba create -n cosmos python=3.12`.
@@ -28,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Bumped `cosmos-fix-tools` to `0.2.0` for the scripted publish workflow, and `cosmos-knowledge-tools` to `0.1.4`, `cosmos-sources-tools` to `0.4.6`, and `cosmos-stockdata-tools` to `0.3.4` for the preflight-aware fix-report handoff.
+- Moved the fix-report readiness check before any packaged-file modification: every business Skill now runs the bundled local preflight first, so an incomplete setup stops the repair before an unattributable change, and a repair is never lost to a late sync failure — the report is always committed locally before the network is contacted.
+- Replaced the prose Git workflow in the fix-report SKILL with calls to the bundled publisher, and rewrote the corresponding prose-assertion test (`fix-report writes to a dedicated report repository and pushes` → `fix-report publishes through the bundled deterministic publisher`) because it encoded the superseded manual-command contract; behavioral coverage moved to `tests/fix-report-publish.test.mjs`.
 - Bumped `cosmos-fix-tools` to `0.1.3` and `cosmos-sources-tools` to `0.4.5` for the symlinked CLI entry-point, temporary-root, and canonical-path fixes.
 - Bumped `cosmos-fix-tools` to `0.1.2`, `cosmos-knowledge-tools` to `0.1.3`, `cosmos-sources-tools` to `0.4.4`, and `cosmos-stockdata-tools` to `0.3.3` for the report-channel, fixed-environment, and developer-reference cleanup.
 - Fixed every Python-running Skill (`llm-wiki`, `raw-to-markdown`, `stockdata-fetch`) to the micromamba environment `cosmos` with `uv pip`; `stockdata-fetch` no longer asks the user to choose an environment and records `cosmos` in its binding.
