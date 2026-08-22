@@ -2,6 +2,13 @@
 
 Private Codex plugin marketplace for reusable Cosmos workflows.
 
+## Supported platforms
+
+- macOS and Linux only. The plugins assume a POSIX environment (`~/.config` configuration paths, POSIX file permissions such as `chmod 600`, and POSIX filesystem semantics). Windows is not supported.
+- Node.js 22.13 or later for every Node-based Skill and bundled script.
+- Git for `fix-report` publishing.
+- micromamba and uv for every Skill that runs Python.
+
 ## Install
 
 You need GitHub access to `Palindromos-AI/cosmos-plugins` and an SSH key authorized for that account before installing this private marketplace.

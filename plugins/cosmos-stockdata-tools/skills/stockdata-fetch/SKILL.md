@@ -139,9 +139,10 @@ Use each user's own source accounts and project-specific authentication method. 
 
 ## Hard rules
 
-- Keep only generic, immutable SuperMind transport infrastructure and read-only, contract-neutral implementation references in the installed Skill; never bundle a fixed full-extraction program, universal schema, or coverage thresholds, and never write runtime state, tokens, executable business scripts, or retrieved data into the plugin cache or marketplace snapshot.
-- Implement only the current requirement, but preserve every previously accepted capability in the cumulative workspace implementation.
-- Preserve the source priority `SuperMind -> baostock -> AKShare` for every dataset or field, and distinguish unsupported data from operational failure with empirical evidence.
+The sections above already fix what the installed Skill may contain (never a fixed full-extraction program, universal schema, or coverage thresholds), the source ladder, and the binding contract. In addition:
+
+- Implement only the current requirement while preserving every previously accepted capability in the cumulative workspace implementation.
+- Distinguish unsupported data from operational failure with empirical evidence before moving down the source ladder.
 - Keep China-market dates and trading sessions explicit in `Asia/Shanghai`.
 - State the source of every delivered dataset, disclose any mixed-source result, and never weaken an agreed acceptance check or present partial output as complete.
 - Do not commit, merge, push, publish, install dependencies, or change unrelated files without the user's authorization. The sole exception is `$fix-report` operating on its independently configured repository for the specified report-only commit and push.

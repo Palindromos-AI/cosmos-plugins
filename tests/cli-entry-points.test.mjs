@@ -34,6 +34,26 @@ function run(scriptPath) {
   });
 }
 
+test("chat CLIs print a one-line usage when required arguments are missing", () => {
+  for (const [relativePath, usage] of [
+    [
+      "plugins/cosmos-sources-tools/scripts/chat-publish-report.mjs",
+      "usage: chat-publish-report.mjs <namespace> <draft-path> <target-path> <expected-sha256>",
+    ],
+    [
+      "plugins/cosmos-sources-tools/scripts/chat-repair-state.mjs",
+      "usage: chat-repair-state.mjs begin <skill> <state-path> <run-id> <failure-code> <phase>",
+    ],
+  ]) {
+    const result = spawnSync(process.execPath, [path.join(repoRoot, relativePath)], {
+      encoding: "utf8",
+      input: "",
+    });
+    assert.notEqual(result.status, 0, `${relativePath}: should fail without arguments`);
+    assert.equal(result.stderr.trim(), usage, `${relativePath}: usage line mismatch`);
+  }
+});
+
 test("every CLI entry point runs when invoked through a symlinked path", async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cosmos-cli-symlink-"));
   t.after(() => rm(tempRoot, { recursive: true, force: true }));

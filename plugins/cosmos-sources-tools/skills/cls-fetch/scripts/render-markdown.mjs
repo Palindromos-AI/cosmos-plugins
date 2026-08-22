@@ -2,7 +2,6 @@
 
 import { realpathSync } from "node:fs";
 import {
-  link,
   mkdir,
   open,
   readFile,
@@ -166,8 +165,9 @@ export async function writeMarkdown(
       }
 
       if (!existingHandle) {
+        let targetHandle;
         try {
-          await link(temporary, target);
+          targetHandle = await open(target, "wx");
         } catch (error) {
           if (error.code === "EEXIST") {
             throw new Error(
@@ -175,6 +175,14 @@ export async function writeMarkdown(
             );
           }
           throw error;
+        }
+        try {
+          await targetHandle.writeFile(markdown, "utf8");
+        } catch (error) {
+          await unlink(target).catch(() => {});
+          throw error;
+        } finally {
+          await targetHandle.close();
         }
         await unlink(temporary);
       } else {

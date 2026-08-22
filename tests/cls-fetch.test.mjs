@@ -7,6 +7,7 @@ import {
   canonicalizeParams,
   dateWindow,
   fetchDay,
+  formatCliError,
   initialCursor,
   parseArgs,
   signParams,
@@ -239,4 +240,32 @@ test("batch digests bind date, offset, and exact IDs", () => {
   assert.notEqual(digest, batchDigest(DATE, 10, [1, 2, 3]));
   assert.notEqual(digest, batchDigest(DATE, 0, [1, 2, 4]));
   assert.notEqual(digest, batchDigest("2026-08-20", 0, [1, 2, 3]));
+});
+
+test("expected CLI failures format without a stack trace while defects keep it", async () => {
+  const httpFailure = async () => ({
+    ok: false,
+    status: 404,
+    text: async () => "not found",
+  });
+  const httpError = await fetchDay(fetchOptions(httpFailure)).catch((thrown) => thrown);
+  assert.match(httpError.message, /HTTP 404/);
+  const httpFormatted = formatCliError(httpError);
+  assert.match(httpFormatted, /HTTP 404/);
+  assert.doesNotMatch(httpFormatted, /\n\s+at /);
+
+  const validationError = await fetchDay(fetchOptions(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ errno: 42, msg: "denied" }),
+  }))).catch((thrown) => thrown);
+  assert.doesNotMatch(formatCliError(validationError), /\n\s+at /);
+
+  const networkError = new TypeError("fetch failed");
+  networkError.cause = { code: "ECONNREFUSED", syscall: "connect", message: "connect refused" };
+  const networkFormatted = formatCliError(networkError);
+  assert.doesNotMatch(networkFormatted, /\n\s+at /);
+  assert.match(networkFormatted, /Caused by: .*code=ECONNREFUSED/);
+
+  assert.match(formatCliError(new Error("unexpected defect")), /\n\s+at /);
 });

@@ -223,6 +223,21 @@ test("fix-report writes only confined, non-symlink report paths", async (t) => {
   );
 });
 
+test("fix-report CLI refuses an interactive terminal instead of waiting for keyboard input", async () => {
+  const scriptUrl = pathToFileURL(path.join(
+    repoRoot,
+    "plugins/cosmos-fix-tools/skills/fix-report/scripts/write-report.mjs",
+  )).href;
+  const { requirePipedStandardInput } = await import(scriptUrl);
+
+  assert.throws(
+    () => requirePipedStandardInput({ isTTY: true }),
+    /pipe the report via standard input/,
+  );
+  assert.doesNotThrow(() => requirePipedStandardInput({ isTTY: false }));
+  assert.doesNotThrow(() => requirePipedStandardInput({ isTTY: undefined }));
+});
+
 test("existing skills scope source-repository authorization separately from fix reports", async () => {
   for (const relativePath of [
     "plugins/cosmos-sources-tools/skills/cls-fetch/SKILL.md",

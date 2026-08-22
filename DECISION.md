@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-08-21 — Declare macOS/Linux-only support, adopt exclusive creation for no-clobber writes, and close deferred items
+
+- **Clarification:** Applies marketplace-wide as of `cosmos-knowledge-tools` `0.1.6`, `cosmos-sources-tools` `0.6.1`, `cosmos-stockdata-tools` `0.4.1`, and `cosmos-fix-tools` `0.2.1`.
+- **Context:** POSIX assumptions (`~/.config`, `chmod 600`, POSIX filesystem semantics) already pervade every plugin; the hardlink-based no-clobber pattern depended on filesystem hardlink support and left staging files to create and clean up; and several review findings had stayed parked without a recorded outcome.
+- **Decision:** The marketplace supports macOS and Linux only — Windows is explicitly unsupported — with Node.js 22.13 or later, Git, and micromamba + uv declared once in the README. Every no-clobber writer creates its target exclusively (`open` with `wx`/`xb`) instead of hardlinking a staged file; the refuse-existing semantics are unchanged, and a mid-write failure removes the partially created target. The following items are terminated and cleared from the backlog, not deferred: the zsxq adapter v1–v6 version-pattern refactor, jsdom real-selector tests, moving the sharp installation out of the plugin cache (it stays installed inside the installed skill directory), the timeline-polling O(n²) optimization, a zero-topic-planet verification day, and third-party attribution for the kepano/obsidian-skills-derived skills.
+- **Context:** Exclusive creation trades the hardlink pattern's atomic full-content appearance for filesystem universality: a process crash mid-write can leave a partial target, accepted for these single-writer local files because every error path removes the partially created target, and the cls and zsxq reader writers additionally re-verify content after writing.
+
 ## 2026-08-21 — Make zsxq-fetch known limitations explicit and derive identity from sanitized URLs
 
 - **Clarification:** Applies to `cosmos-sources-tools` `0.6.0`, `zsxq-fetch` only. The 2026-08-16 automatic-repair decision stays active; this entry narrows it by declaring two failure classes non-repairable and one a decided skip.

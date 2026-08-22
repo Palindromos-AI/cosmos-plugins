@@ -1,6 +1,6 @@
 {
   "name": "cosmos-sources-tools",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Fetch, verify, and locally archive daily source content from CLS, Knowledge Planet, DingTalk, and Feishu.",
   "author": {
     "name": "Jason"
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Cosmos Sources Tools",
     "shortDescription": "Archive daily CLS, Knowledge Planet, DingTalk, and Feishu content.",
-    "longDescription": "Retrieves and semantically filters the complete China Standard Time CLS telegraph feed, archives every topic and attachment from one Knowledge Planet Beijing calendar day through signed-in Chrome, or reads exact DingTalk and Feishu groups through signed-in desktop sessions. All four skills write source-grounded Markdown inside one durable per-user sources workspace derived from a shared Cosmos workspace root. Plugin updates replace capability code only and never own the separate local binding or user data.",
+    "longDescription": "Retrieves and semantically filters the complete China Standard Time CLS telegraph feed over the network from cls.cn, archives every topic and attachment from one Knowledge Planet Beijing calendar day by operating the user's already signed-in Chrome session, or reads exact DingTalk and Feishu groups by operating the user's already signed-in desktop sessions. All four skills write source-grounded Markdown inside one durable per-user sources workspace derived from a shared Cosmos workspace root. Plugin updates replace capability code only and never own the separate local binding or user data.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": [

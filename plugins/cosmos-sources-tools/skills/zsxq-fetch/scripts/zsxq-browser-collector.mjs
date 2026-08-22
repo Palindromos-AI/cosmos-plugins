@@ -1154,7 +1154,14 @@ export async function downloadZsxqTimelinePdfOnTab(tab, input) {
   }
 
   try {
-    const downloadPromise = tab.playwright.waitForEvent("download", { timeoutMs });
+    // Playwright's standard option name is `timeout`; an unknown option name
+    // is silently ignored and would fall back to the 30s default. Pass both
+    // names so a tab adapter using this collector's own `timeoutMs` spelling
+    // is honored as well; the extra key is harmless either way.
+    const downloadPromise = tab.playwright.waitForEvent("download", {
+      timeout: timeoutMs,
+      timeoutMs,
+    });
     const [download] = await Promise.all([downloadPromise, downloadControl.click()]);
     return {
       download,
@@ -2274,15 +2281,19 @@ async function collectRepairDiagnostics(tab, error) {
 }
 
 function repairableCollectorError(error) {
+  const message = thrownMessage(error);
+  // An error thrown inside page evaluation crosses the protocol boundary as a
+  // plain Error whose message keeps the original "ReferenceError: ..." prefix,
+  // so the message shape counts as evidence alongside the error type and name.
   const isReferenceError = error instanceof ReferenceError
     || (
       error !== null
       && typeof error === "object"
       && !Array.isArray(error)
       && error.name === "ReferenceError"
-    );
+    )
+    || /^ReferenceError:/u.test(message);
   if (isReferenceError) {
-    const message = thrownMessage(error);
     const isInternalMissingReference = /\bis not defined\b|cannot access .+ before initialization|can't find variable:/iu.test(
       message,
     );

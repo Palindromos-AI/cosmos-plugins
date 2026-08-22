@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
-  link,
   lstat,
   mkdir,
   open,
@@ -400,13 +399,22 @@ async function writeReaderUnlocked(
   try {
     const existing = await inspectExisting(target, scope);
     if (!existing) {
+      let targetHandle;
       try {
-        await link(temporary, target);
+        targetHandle = await open(target, "wx");
       } catch (error) {
         if (error.code === "EEXIST") {
           throw new Error(`Output appeared concurrently and was not replaced: ${target}`);
         }
         throw error;
+      }
+      try {
+        await targetHandle.writeFile(markdown, "utf8");
+      } catch (error) {
+        await unlink(target).catch(() => {});
+        throw error;
+      } finally {
+        await targetHandle.close();
       }
       await unlink(temporary);
     } else {

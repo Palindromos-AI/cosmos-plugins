@@ -458,15 +458,7 @@ formulas:
 
 ### Common Formula Errors
 
-**Duration math without field access**: Subtracting dates returns a Duration, not a number. Always access `.days`, `.hours`, etc.
-
-```yaml
-# WRONG - Duration is not a number
-"(now() - file.ctime).round(0)"
-
-# CORRECT - access .days first, then round
-"(now() - file.ctime).days.round(0)"
-```
+**Duration math without field access**: see the Duration Type section above — subtracting dates returns a Duration, so access `.days`, `.hours`, etc. before number functions.
 
 **Missing null checks**: Properties may not exist on all notes. Use `if()` to guard.
 

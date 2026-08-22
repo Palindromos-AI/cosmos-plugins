@@ -841,28 +841,22 @@ def build_document(
 
 
 def create_output(path: Path, content: bytes) -> None:
-    temp_name: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=path.parent,
-            prefix=f".{path.name}.raw-to-markdown-",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
+        # 0o600 preserves the mode the earlier staging-file implementation gave
+        # every output.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise ConversionError(
+            "Output appeared after planning; refusing to overwrite it"
+        ) from exc
+    try:
+        with os.fdopen(fd, "wb") as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-            temp_name = handle.name
-        try:
-            os.link(temp_name, path)
-        except FileExistsError as exc:
-            raise ConversionError(
-                "Output appeared after planning; refusing to overwrite it"
-            ) from exc
-    finally:
-        if temp_name and os.path.exists(temp_name):
-            os.unlink(temp_name)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def run_convert(

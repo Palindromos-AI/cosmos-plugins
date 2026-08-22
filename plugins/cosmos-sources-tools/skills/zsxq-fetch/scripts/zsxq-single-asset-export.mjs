@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
-import { link, rm, stat, writeFile, realpath } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { open, rm, stat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -109,7 +109,6 @@ export async function exportSingleAsset({
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const temporaryPath = `${requestedOutput}.${randomUUID()}.tmp`;
   try {
     const response = await fetchImpl(exactSourceUrl, {
       redirect: "follow",
@@ -135,14 +134,22 @@ export async function exportSingleAsset({
       throw new Error(message, cancellationError ? { cause: cancellationError } : undefined);
     }
     const bytes = await readBodyWithinLimit(response, maxBytes, controller);
-    await writeFile(temporaryPath, bytes, { flag: "wx", mode: 0o600 });
+    let outputHandle;
     try {
-      await link(temporaryPath, requestedOutput);
+      outputHandle = await open(requestedOutput, "wx", 0o600);
     } catch (error) {
       if (error.code === "EEXIST") {
         throw new Error("outputPath must not already exist", { cause: error });
       }
       throw error;
+    }
+    try {
+      await outputHandle.writeFile(bytes);
+    } catch (error) {
+      await rm(requestedOutput, { force: true });
+      throw error;
+    } finally {
+      await outputHandle.close();
     }
     return {
       output_path: requestedOutput,
@@ -154,7 +161,6 @@ export async function exportSingleAsset({
     };
   } finally {
     clearTimeout(timer);
-    await rm(temporaryPath, { force: true });
   }
 }
 

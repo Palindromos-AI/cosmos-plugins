@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -127,12 +127,18 @@ for (const { label, outputName, draftName } of [
 
     await publishReport({ namespace: outputName, draftPath, targetPath, expectedSha256, runtimeOptions });
     assert.deepEqual(await readFile(targetPath), bytes);
+    assert.deepEqual(await readdir(outputDirectory), ["report.md"]);
 
     const secondDraft = path.join(outputDirectory, draftName.replace("test", "second"));
     await writeFile(secondDraft, bytes);
     await assert.rejects(
       publishReport({ namespace: outputName, draftPath: secondDraft, targetPath, expectedSha256, runtimeOptions }),
       /target already exists/,
+    );
+    assert.deepEqual(await readFile(targetPath), bytes);
+    assert.deepEqual(
+      (await readdir(outputDirectory)).sort(),
+      [path.basename(secondDraft), "report.md"].sort(),
     );
 
     const changedDraft = path.join(outputDirectory, draftName.replace("test", "changed"));

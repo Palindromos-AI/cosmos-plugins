@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,7 +12,7 @@ import {
   sha256Utf8,
   SCHEMA_VERSION,
 } from "../scripts/run-model.mjs";
-import { createRun, loadRun } from "../scripts/run-store.mjs";
+import { createRun, loadRun, writeReaderSafely } from "../scripts/run-store.mjs";
 import { runCli } from "../scripts/zsxq-runner.mjs";
 
 const BODY = "主题正文第一行\n第二行";
@@ -427,5 +427,33 @@ test("a schema-1 manifest is rejected instead of silently migrated", async (t) =
   await assert.rejects(
     runCli(["status", "--workspace", workspace]),
     /unsupported schema or generator/,
+  );
+});
+
+test("reader writer creates fresh output exclusively and refuses unmarked files", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "zsxq-reader-write-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const scope = {
+    planet: "Test Planet",
+    planet_url: "https://wx.zsxq.com/group/test",
+    date: "2026-08-16",
+    snapshot_at: "2026-08-16T01:00:00Z",
+  };
+
+  const target = path.join(directory, "reader.md");
+  await writeReaderSafely(target, "# report\n", scope, "complete");
+  assert.equal(await readFile(target, "utf8"), "# report\n");
+  assert.deepEqual(await readdir(directory), ["reader.md"]);
+
+  const unmarked = path.join(directory, "unmarked.md");
+  await writeFile(unmarked, "user notes\n");
+  await assert.rejects(
+    writeReaderSafely(unmarked, "# report\n", scope, "complete"),
+    /Refusing to overwrite an unmarked file/,
+  );
+  assert.equal(await readFile(unmarked, "utf8"), "user notes\n");
+  assert.deepEqual(
+    (await readdir(directory)).sort(),
+    ["reader.md", "unmarked.md"],
   );
 });

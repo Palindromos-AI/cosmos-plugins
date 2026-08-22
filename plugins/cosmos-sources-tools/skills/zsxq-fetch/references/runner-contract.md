@@ -9,6 +9,7 @@
 5. Attachment records
 6. Cache reuse
 7. Finalization outcomes
+8. Browser collector handoff
 
 ## 1. Run lifecycle
 
@@ -75,9 +76,10 @@ non-pinned stream: the collector reads the pinned area's authors and
 timestamps, and stops with `STICKY_TARGET_DATE_UNSUPPORTED` when a pinned
 timestamp belongs to the target date without a matching stream topic, or
 cannot be read at all. That code is intentionally outside the automatic-repair
-set. Displayed timestamps must parse strictly wherever they can affect the
-result (the top, every target-date candidate, everything above the proven
-crossing); an unreadable timestamp strictly below the crossing is tolerated.
+set. Displayed timestamps must parse strictly (`YYYY-MM-DD HH:mm[:ss]`, Beijing)
+wherever they can affect the result (the top, every target-date candidate,
+everything above the proven crossing); an unreadable timestamp strictly below
+the crossing is tolerated.
 Image-readiness gating applies only to target-date topics.
 
 The active `zsxq-web-angular-v6` adapter preserves the immutable v1 through v5
@@ -270,6 +272,12 @@ Known extraction failure:
 
 Do not mix a failure explanation into `payload` or `recovered_payload`. The runner derives all UTF-8 hashes. Omit `recovered_payload` when no fragment is reliable.
 
+Topic-body extraction rules:
+
+- Copy only the exact body carried by the collector's frozen inventory; the collector already cross-checked it against its dedicated extractor. Never "clean" a frozen body, re-extract it by hand, or let the runner infer whether a phrase is UI. The `展开全部`/`收起` control text is structurally excluded by the collector; identical text inside the body is legitimate source content.
+- Copy all visible text without summarizing, translating, correcting, or stylistically rewriting it. Preserve headings, paragraphs, lists, quotations, and link targets when the source exposes them. Mark source text that is genuinely unreadable as `[无法辨认]`; never guess.
+- Set `body_status: present` only after the complete displayed body has been captured. A truncated, partially hidden, or uncertain body is `failed` regardless of how much text was recovered.
+
 ## 5. Attachment records
 
 ### Common source object
@@ -325,6 +333,13 @@ The default grid uses lossless PNG crops with a maximum size of `512×768` and `
 
 An image with `extraction.status: failed` must use `verification.status: failed`; a present or empty image must be verified. When the platform never yields any image representation, omit `representation_path`, dimensions, and `representation_type`, and record failed extraction plus failed verification. This preserves the known attachment as an explicit incomplete item instead of making it impossible to record.
 
+Image extraction and verification rules:
+
+- Use any representation available through the platform's official UI that makes all substantive image content readable — preview, thumbnail, transformed image, browser-rendered image, or page screenshot. Prefer a clearer representation only when the current one leaves content unreadable or uncertain; do not spend time retrieving the publisher's original binary when the complete content can already be verified. The recorded pixel dimensions, SHA-256, and `representation_type` identify evidence and never grade quality or completeness.
+- Extract the image's semantic content text in natural reading order: text a downstream reader needs to understand what the author intended to share. Exclude unrelated interface chrome (status bars, viewer controls, follow/share buttons, navigation labels, comment placeholders, standalone interaction counts); keep interface text only when it is itself material evidence (a discussed setting, an error message, a transaction value, a tutorial step). When uncertain, include rather than delete potentially substantive text. Keep a displayed account name or watermark as `source_account` metadata (`未显示` when absent), never inside the OCR payload. Preserve visible paragraph, list, and table structure. Write `未检测到可读文字` for an image with no readable text, and record a specific extraction failure instead of silently omitting an inaccessible image.
+- Perform a separate visual verification pass against the same representation used for extraction: confirm every content region is captured, structure preserved, `source_account` separated, and interface chrome absent. If the representation is too degraded, cropped, or obstructed to prove this, obtain a clearer representation; when the obstacle is small or dense text over sufficient native pixels, run the mandatory tile analysis before failing.
+- Set `verification.status: verified` only when that comparison succeeds, regardless of representation quality or transport form; otherwise set it `failed` with the exact missing or uncertain content. `extraction.status: present` requires a complete OCR payload; `empty` requires visually verified absence; partial OCR is `failed`.
+
 ### Linked webpage
 
 ```json
@@ -345,6 +360,13 @@ An image with `extraction.status: failed` must use `verification.status: failed`
 
 Include exactly the children already frozen through `record-web-inventory` in `embedded_media`, ordered by `source_ordinal` `1..N`. Do not include decorative media and do not follow newly discovered hyperlinks. `canonical_url` and `stable_page_id` are optional descriptive metadata; they carry no cache implications.
 
+Webpage extraction rules:
+
+- Prefer the available clean-webpage extraction skill for public HTML pages; use the authenticated browser only when the page requires its existing session or interactive rendering. Any accessible rendering is acceptable (clean-page extraction, browser rendering, reader view, screenshot/OCR); never substitute a search snippet or another publisher.
+- Extract the article title, original linked URL, canonical URL when available, visible author/publication metadata, and main body. Remove navigation, advertisements, cookie banners, recommendations, and unrelated comments; preserve the page's semantic heading, paragraph, list, quotation, and table order.
+- Extract the frozen child inventory's inline images and embedded PDFs with the image and PDF rules in this document, keeping their payloads and evidence separate from the page body; complete body and children in the same browser visit whenever the UI exposes them together, reusing the in-run binary cache for identical binaries.
+- `web_body_status` follows the same `present`/`empty`/`failed` rules as image text: `present` only for the complete substantive body and structure; clipped, paginated-but-unloaded, or paywalled bodies are `failed`. The page's aggregate `extraction_status` is `present` only when the body is `present` or `empty` and every inventoried child is complete and verified; otherwise the page is `failed`.
+
 ### PDF
 
 ```json
@@ -364,6 +386,11 @@ Include exactly the children already frozen through `record-web-inventory` in `e
 ```
 
 Use `representation_paths` instead of `representation_path` when the accessible representation consists of multiple rendered page files. Pages must appear exactly once in order `1..page_count`. Embedded PDFs use the same object inside a webpage's `embedded_media`.
+
+PDF extraction rules:
+
+- Use whichever accessible representation yields complete page contents (text layer, rendered pages, screenshots, OCR); prefer the text layer, then visually check any page whose extraction is missing, incomplete, or corrupt. Establish the total `page_count` independently (parser, metadata, viewer total, or another reliable end signal) with `page_count_evidence`; an unprovable or disputed total makes the PDF failed.
+- Preserve page boundaries as `#### 第 N 页` (top-level) or `##### 第 N 页` (embedded) in reading order and record unreadable pages explicitly; a missing, duplicate, out-of-order, or out-of-range page makes the PDF failed. If no page representation is acquirable, record one `document_failure` and retain `page_count_evidence`.
 
 When the document cannot be accessed at all, omit `pages` and add a whole-document failure:
 
@@ -400,7 +427,7 @@ On a matching complete result, use `reuse_extraction_from` and omit the copied e
 
 ## 7. Finalization outcomes
 
-`finalize` always validates the manifest, renders the temporary audit ledger and validates its disk round-trip — including sanitized-URL checks on the runner-owned structured fields — then renders the content-only reader report and applies the safe-write rules. A second SQLite transaction keyed by the canonical output path serializes different run workspaces targeting the same archive. A waiting writer re-checks the canonical snapshot after acquiring that lock, so an older run cannot overwrite or leave stale sibling state beside a newer run. The lock databases live under the operating system's temporary directory, not beside the reader report.
+`finalize` always validates the manifest, renders the temporary audit ledger and validates its disk round-trip — including sanitized-URL checks on the runner-owned structured fields — then renders the content-only reader report and applies the safe-write rules. Those checks never scan rendered payload text for label-like lines: source payload text is never rejected merely because it contains comment syntax or words that resemble audit labels. A second SQLite transaction keyed by the canonical output path serializes different run workspaces targeting the same archive. A waiting writer re-checks the canonical snapshot after acquiring that lock, so an older run cannot overwrite or leave stale sibling state beside a newer run. The lock databases live under the operating system's temporary directory, not beside the reader report.
 
 Before rendering, it resolves and re-hashes every checkpointed source binary and image/PDF representation, including embedded media and cache-source occurrences. A missing, redirected, or changed file stops finalization without output and retains the workspace for diagnosis.
 
@@ -439,3 +466,11 @@ Same-path rerun rules enforced by the safe writer:
   whether a stale partial was removed.
 - If validation or rename fails, only the exact sibling temporary file created
   for the attempt is removed; it is retained solely when needed for diagnosis.
+
+## 8. Browser collector handoff
+
+The browser collector (`scripts/zsxq-browser-collector.mjs`) owns every timeline and detail proof obligation: the versioned DOM adapter, mounting and readiness checks, collapsed-body expansion, sequential scrolling, exact author/time/body/attachment association, the independent dedicated-body cross-check, per-topic `image_count` with overflow-badge detection, chronology and date-boundary proof, pinned-topic safety checks, automatic repair handoff, and the resumable `browser-collector-checkpoint.json`. Section 1 describes the calling sequence, the strict-timestamp and pinned-topic gating, and the session-local records the collector returns.
+
+Every occurrence key is runner-derived as `<topic_key>:<type>:<source_ordinal>:<source_identity>`, even when the same platform ID, URL, or binary appears in another topic; counts or arbitrary keys alone are never coverage proof.
+
+PDF download handshake: when the official file preview exposes exactly one visible `下载文件` control for the inventoried filename, call `downloadZsxqTimelinePdfOnTab` with the matching `pdf_download_targets` indices and expected filename from section 1 — never guess or re-derive them from the page. Arm the browser download event before clicking, resolve the exact completed download rather than guessing from its filename, and copy it into the private runner workspace before parsing. On `PDF_FILE_IDENTITY_MISMATCH`, re-collect instead of guessing.

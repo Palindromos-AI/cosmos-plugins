@@ -19,6 +19,11 @@ const APP_PARAMS = Object.freeze({
   sv: "8.7.9",
 });
 
+// Expected operational failures (usage errors, HTTP/application errors,
+// fail-closed completeness checks). The CLI prints them without a stack trace;
+// anything else is an unexpected defect and keeps the stack.
+export class ClsFetchError extends Error {}
+
 function shaHex(algorithm, value) {
   return createHash(algorithm).update(value).digest("hex");
 }
@@ -57,12 +62,12 @@ export function formatShanghaiDate(date = new Date()) {
 
 export function dateWindow(dateString) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    throw new Error(`Invalid date: ${dateString}`);
+    throw new ClsFetchError(`Invalid date: ${dateString}`);
   }
 
   const startMs = Date.parse(`${dateString}T00:00:00+08:00`);
   if (!Number.isFinite(startMs) || formatShanghaiDate(new Date(startMs)) !== dateString) {
-    throw new Error(`Invalid Shanghai calendar date: ${dateString}`);
+    throw new ClsFetchError(`Invalid Shanghai calendar date: ${dateString}`);
   }
 
   const start = Math.floor(startMs / 1000);
@@ -72,7 +77,7 @@ export function dateWindow(dateString) {
 export function initialCursor(dateString, now = new Date()) {
   const currentDate = formatShanghaiDate(now);
   if (dateString > currentDate) {
-    throw new Error(`Cannot fetch future Shanghai date ${dateString}`);
+    throw new ClsFetchError(`Cannot fetch future Shanghai date ${dateString}`);
   }
 
   const { end } = dateWindow(dateString);
@@ -115,7 +120,7 @@ async function fetchJson(
   } = {},
 ) {
   if (typeof fetchImpl !== "function") {
-    throw new Error("This Node.js runtime does not provide fetch()");
+    throw new ClsFetchError("This Node.js runtime does not provide fetch()");
   }
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -127,7 +132,7 @@ async function fetchJson(
 
       if (!response.ok) {
         const body = (await response.text()).slice(0, 500);
-        const error = new Error(
+        const error = new ClsFetchError(
           `CLS request failed with HTTP ${response.status}${body ? `: ${body}` : ""}`,
         );
         error.status = response.status;
@@ -150,7 +155,7 @@ async function fetchJson(
 
 function validatePage(payload) {
   if (!payload || payload.errno !== 0) {
-    throw new Error(
+    throw new ClsFetchError(
       `CLS returned an application error: ${JSON.stringify({
         errno: payload?.errno,
         msg: payload?.msg,
@@ -159,11 +164,11 @@ function validatePage(payload) {
   }
   const rollData = payload.data?.roll_data;
   if (!Array.isArray(rollData)) {
-    throw new Error("CLS response is missing data.roll_data");
+    throw new ClsFetchError("CLS response is missing data.roll_data");
   }
   for (const item of rollData) {
     if (!Number.isInteger(item?.id) || !Number.isInteger(item?.ctime)) {
-      throw new Error(
+      throw new ClsFetchError(
         "CLS response contains an item without a valid integer id or ctime",
       );
     }
@@ -172,7 +177,7 @@ function validatePage(payload) {
     const previous = rollData[index - 1];
     const current = rollData[index];
     if (current.ctime > previous.ctime) {
-      throw new Error(
+      throw new ClsFetchError(
         "CLS response is not ordered newest-first: " +
           `index ${index - 1} ctime=${previous.ctime}, ` +
           `index ${index} ctime=${current.ctime}`,
@@ -194,11 +199,11 @@ export async function fetchDay({
   sleepImpl = sleep,
 } = {}) {
   if (!Number.isFinite(now.getTime())) {
-    throw new Error("now must be a valid Date");
+    throw new ClsFetchError("now must be a valid Date");
   }
   const { start, end } = dateWindow(date);
   if (pageSize > MAX_PAGE_SIZE) {
-    throw new Error(`pageSize cannot exceed ${MAX_PAGE_SIZE}`);
+    throw new ClsFetchError(`pageSize cannot exceed ${MAX_PAGE_SIZE}`);
   }
   let cursor = initialCursor(date, now);
   let pages = 0;
@@ -219,7 +224,7 @@ export async function fetchDay({
     pages += 1;
 
     if (pageItems.length === 0) {
-      throw new Error(
+      throw new ClsFetchError(
         `CLS returned an empty page at cursor=${cursor} before the Shanghai start boundary`,
       );
     }
@@ -228,14 +233,14 @@ export async function fetchDay({
       previousTailTime !== null &&
       pageItems[0].ctime > previousTailTime
     ) {
-      throw new Error(
+      throw new ClsFetchError(
         "CLS pagination moved forward across pages: " +
           `previous tail=${previousTailTime}, current head=${pageItems[0].ctime}`,
       );
     }
     const outsideCursor = pageItems.find((item) => item.ctime >= cursor);
     if (outsideCursor) {
-      throw new Error(
+      throw new ClsFetchError(
         "CLS response violates the exclusive cursor: " +
           `cursor=${cursor}, id=${outsideCursor.id}, ctime=${outsideCursor.ctime}`,
       );
@@ -260,7 +265,7 @@ export async function fetchDay({
       // A short page that cannot advance means the feed holds nothing older:
       // the start boundary cannot be proven, so fail closed.
       if (pageItems.length < requestSize) {
-        throw new Error(
+        throw new ClsFetchError(
           `CLS feed ended at cursor=${cursor} before the Shanghai start boundary; completeness cannot be proven`,
         );
       }
@@ -274,7 +279,7 @@ export async function fetchDay({
         }
         continue;
       }
-      throw new Error(
+      throw new ClsFetchError(
         `Pagination made no progress at cursor=${cursor} even with rn=${MAX_PAGE_SIZE}; ` +
           `at least ${MAX_PAGE_SIZE} items share the second ${tailTime}`,
       );
@@ -288,7 +293,7 @@ export async function fetchDay({
   }
 
   if (!stopReason) {
-    throw new Error(`Pagination exceeded maxPages=${maxPages} before reaching midnight`);
+    throw new ClsFetchError(`Pagination exceeded maxPages=${maxPages} before reaching midnight`);
   }
 
   const items = [...byId.values()].sort(
@@ -329,8 +334,24 @@ export async function writeDataset(outputPath, dataset) {
   return target;
 }
 
+// Network failures from fetch() are expected too: undici signals them as a
+// TypeError carrying a `cause`, and AbortSignal.timeout() as a TimeoutError
+// or AbortError.
+function expectedNetworkError(error) {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+  if (error.name === "AbortError" || error.name === "TimeoutError") {
+    return true;
+  }
+  return error instanceof TypeError && error.cause !== undefined;
+}
+
 export function formatCliError(error) {
-  const primary = error?.stack ?? error?.message ?? String(error);
+  const expected = error instanceof ClsFetchError || expectedNetworkError(error);
+  const primary = expected
+    ? error.message
+    : error?.stack ?? error?.message ?? String(error);
   const cause = error?.cause;
   if (!cause) {
     return primary;
@@ -353,7 +374,7 @@ export function formatCliError(error) {
 function parseIntegerFlag(name, value, { allowZero = false } = {}) {
   const number = Number(value);
   if (!Number.isInteger(number) || number < (allowZero ? 0 : 1)) {
-    throw new Error(`${name} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
+    throw new ClsFetchError(`${name} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
   }
   return number;
 }
@@ -361,7 +382,7 @@ function parseIntegerFlag(name, value, { allowZero = false } = {}) {
 function parsePageSize(value) {
   const number = parseIntegerFlag("--page-size", value);
   if (number > MAX_PAGE_SIZE) {
-    throw new Error(`--page-size cannot exceed ${MAX_PAGE_SIZE}; the endpoint returns an empty page above it`);
+    throw new ClsFetchError(`--page-size cannot exceed ${MAX_PAGE_SIZE}; the endpoint returns an empty page above it`);
   }
   return number;
 }
@@ -372,14 +393,14 @@ export function parseArgs(argv) {
     const flag = argv[index];
     const value = argv[index + 1];
     if (!flag.startsWith("--") || value === undefined) {
-      throw new Error(`Expected --flag value, received ${flag}`);
+      throw new ClsFetchError(`Expected --flag value, received ${flag}`);
     }
     options[flag.slice(2)] = value;
     index += 1;
   }
 
   if (!options.output) {
-    throw new Error("--output is required");
+    throw new ClsFetchError("--output is required");
   }
   return {
     output: options.output,

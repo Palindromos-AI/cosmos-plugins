@@ -196,6 +196,13 @@ export function parseArguments(argv) {
   return values;
 }
 
+// Refuse to sit silently waiting for keyboard input when nothing is piped.
+export function requirePipedStandardInput(stdin) {
+  if (stdin.isTTY) {
+    throw new Error("standard input is a terminal: pipe the report via standard input");
+  }
+}
+
 async function readStandardInput() {
   const chunks = [];
   for await (const chunk of process.stdin) {
@@ -206,6 +213,7 @@ async function readStandardInput() {
 
 async function main() {
   const args = parseArguments(process.argv.slice(2));
+  requirePipedStandardInput(process.stdin);
   const content = await readStandardInput();
   const report = await writeReport({
     repo: args.repo,

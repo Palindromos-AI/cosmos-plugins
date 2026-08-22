@@ -8,13 +8,21 @@ This repository is the `cosmos-plugins` Codex marketplace. It packages reusable 
 
 - `.agents/plugins/marketplace.json`: Ordered marketplace catalog. Each entry points to one local plugin under `plugins/`.
 - `plugins/cosmos-knowledge-tools/`: Knowledge-management and Obsidian workflows packaged together.
+  - `.codex-plugin/plugin.json`: Plugin identity, discovery metadata, and skill path.
+  - `skills/defuddle/`: Clean main-content extraction from web pages to Markdown through the on-demand npx Defuddle CLI.
+  - `skills/json-canvas/`: Obsidian Canvas (`.canvas`) file creation and editing with nodes, edges, and groups.
+  - `skills/llm-wiki/`: Structured, source-grounded Obsidian wiki construction, querying, linting, and maintenance with bundled Python index and audit tooling.
+  - `skills/obsidian-bases/`: Obsidian Bases (`.base`) database-view authoring with views, filters, formulas, and summaries.
+  - `skills/obsidian-cli/`: Obsidian vault operations through the Obsidian CLI, including note, search, and plugin/theme development commands.
+  - `skills/obsidian-markdown/`: Obsidian Flavored Markdown authoring with wikilinks, embeds, callouts, and properties.
+  - `skills/raw-to-markdown/`: Auditable conversion of user-named `raw/` source files into same-directory Markdown sidecars through the pinned MarkItDown engine.
 - `plugins/cosmos-sources-tools/`: Source-retrieval plugin providing CLS telegraph filtering, authenticated Knowledge Planet archival, and read-only DingTalk and Feishu group-message extraction.
   - `.codex-plugin/plugin.json`: Plugin identity, discovery metadata, and skill path.
   - `scripts/workspace-runtime.mjs`: Versioned workspace-binding manager that derives `<cosmos-workspace-root>/sources`, atomically stores the independent external configuration, refuses silent rebinding or automatic schema migration, and canonically confines every final writer to the configured workspace.
   - `references/workspace-runtime.md`: Shared workspace lifecycle, path, update-isolation, and output-containment contract used by all four source Skills.
   - `skills/cls-fetch/`: Installable skill instructions, agent metadata, Node.js runtime scripts, and repair references.
   - `skills/zsxq-fetch/`: Installable skill instructions, agent metadata, browser collector with automatic evidence-driven repair handoff, resumable version-checked checkpoints, pinned-topic and image-overflow safety decisions, shared Beijing-date policy, deterministic Node.js runner with sanitized-URL source identity (manifest schema 2), Node test suites (collector, runner golden path, time helpers), image/PDF extraction resources, output templates, and repair references.
-  - `scripts/chat-publish-report.mjs` and `scripts/chat-repair-state.mjs`: Shared namespace-parameterized content-bound atomic publisher and one-attempt repair budget used by both chat skills, so the two cannot drift apart.
+  - `scripts/chat-publish-report.mjs` and `scripts/chat-repair-state.mjs`: Shared namespace-parameterized hash-verified exclusive-creation publisher and one-attempt repair budget used by both chat skills, so the two cannot drift apart.
   - `skills/dingding-fetch/`: Portable workspace/app/runtime bindings with a fixed Beijing display timezone, DingTalk Computer Use workflow, one-attempt automatic UI-contract repair playbook, agent metadata, and image-extraction rules.
   - `skills/feishu-fetch/`: Portable workspace/app/runtime bindings with a fixed Beijing display timezone, Feishu Computer Use workflow, one-attempt automatic UI-contract repair playbook, agent metadata, in-group thread coverage, and image-extraction rules.
 - `plugins/cosmos-stockdata-tools/`: Stock-market data operations packaged as a separate plugin.
@@ -35,7 +43,8 @@ This repository is the `cosmos-plugins` Codex marketplace. It packages reusable 
   - `skills/fix-report/references/report-template.md`: Report skeleton every fix report follows.
   - `skills/fix-report/agents/openai.yaml`: UI metadata and invocation prompt.
 - `tests/`: Marketplace/plugin integration tests covering packaged skill discovery, catalog wiring, and CLI entry-point behavior through symlinked paths.
-- `README.md`: Installation, available-plugin, runtime, update, and license guidance.
+- `README.md`: Supported platforms, installation, available-plugin, runtime, update, and license guidance for customers.
+- `MAINTAINERS.md`: Maintainer-only development workflow, test baseline, versioning conventions, and release checklist.
 - `LICENSE`: Proprietary customer license for the marketplace; third-party-derived portions stay under their own licenses.
 
 ## Dependency flow

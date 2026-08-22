@@ -313,17 +313,39 @@ class RawToMarkdownComprehensiveTests(unittest.TestCase):
         self.assertFalse(lock.path.exists())
         self.assertIsNone(lock.fd)
 
-    def test_atomic_create_failure_cleans_staging_file(self) -> None:
+    def test_exclusive_create_failure_cleans_partial_output(self) -> None:
         output = self.raw / "atomic.md"
 
         with (
-            mock.patch.object(MODULE.os, "link", side_effect=OSError("link failed")),
+            mock.patch.object(MODULE.os, "fsync", side_effect=OSError("fsync failed")),
             self.assertRaises(OSError),
         ):
             MODULE.create_output(output, b"content")
 
         self.assertFalse(output.exists())
         self.assertEqual(list(self.raw.glob(".atomic.md.*.tmp")), [])
+
+    def test_exclusive_create_refuses_existing_output_and_keeps_it(self) -> None:
+        output = self.raw / "existing.md"
+        output.write_text("original", encoding="utf-8")
+
+        with self.assertRaisesRegex(
+            MODULE.ConversionError, "refusing to overwrite"
+        ):
+            MODULE.create_output(output, b"replacement")
+
+        self.assertEqual(output.read_text(encoding="utf-8"), "original")
+
+    def test_exclusive_create_writes_content_without_leftovers(self) -> None:
+        output = self.raw / "fresh.md"
+
+        MODULE.create_output(output, b"content")
+
+        self.assertEqual(output.read_bytes(), b"content")
+        self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(
+            [entry.name for entry in self.raw.iterdir()], [output.name]
+        )
 
     def test_batch_runtime_failure_does_not_delete_successful_sidecars(self) -> None:
         first = self.raw / "a-success.txt"

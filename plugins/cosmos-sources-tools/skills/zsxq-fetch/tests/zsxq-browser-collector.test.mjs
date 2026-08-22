@@ -152,8 +152,12 @@ function installDownloadTab() {
         if (selector === selectors.filePreviewRoot) return new FakeLocator(preview);
         throw new Error(`Unexpected selector: ${selector}`);
       },
-      async waitForEvent(eventName) {
+      async waitForEvent(eventName, options) {
         assert.equal(eventName, "download");
+        // The collector must pass Playwright's standard `timeout` name and
+        // keep the collector-local `timeoutMs` spelling with the same value.
+        assert.equal(typeof options?.timeout, "number");
+        assert.equal(options.timeout, options.timeoutMs);
         return download;
       },
     },
@@ -694,6 +698,22 @@ test("automatic repair routing is limited to DOM contracts and collector defects
       inputFor(workspace),
     );
     assert.equal(result.status, "automatic-repair-required");
+  });
+
+  await t.test("evaluate-transported ReferenceError message returns automatic repair", async () => {
+    const workspace = await createWorkspace();
+    // Page evaluation returns thrown errors as plain Errors that only keep
+    // the "ReferenceError: ..." message prefix, not the original type.
+    const tab = tabFor(async () => {
+      throw new Error("ReferenceError: permissionResolver is not defined");
+    });
+
+    const result = await collectZsxqTimelineRangeWithAutoRepair(
+      tab,
+      inputFor(workspace),
+    );
+    assert.equal(result.status, "automatic-repair-required");
+    assert.equal(result.code, "COLLECTOR_RUNTIME_REFERENCE_ERROR");
   });
 
   await t.test("invalid input remains a direct error", async () => {

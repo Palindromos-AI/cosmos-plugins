@@ -2,11 +2,11 @@
 
 // Publish verified chat-source report artifacts without clobbering. Shared by
 // dingding-fetch and feishu-fetch; the namespace selects the output directory
-// and the draft/stage naming so the two skills cannot drift apart.
+// and the draft naming so the two skills cannot drift apart.
 
 import { realpathSync } from "node:fs";
-import { createHash, randomBytes } from "node:crypto";
-import { link, lstat, open, unlink } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveOutputPath } from "./workspace-runtime.mjs";
@@ -86,36 +86,23 @@ export async function publishReport({
     throw new Error(`draft SHA-256 mismatch: expected ${expected}, received ${actual}`);
   }
 
-  const stage = path.join(
-    path.dirname(target),
-    `.${space}-publish-${randomBytes(12).toString("hex")}.tmp`,
-  );
-  const stageHandle = await open(stage, "wx", 0o600);
+  let targetHandle;
   try {
-    await stageHandle.writeFile(bytes);
-    await stageHandle.sync();
-  } finally {
-    await stageHandle.close();
-  }
-
-  let published = false;
-  try {
-    await link(stage, target);
-    published = true;
+    targetHandle = await open(target, "wx", 0o600);
   } catch (error) {
     if (error?.code === "EEXIST") {
       throw new Error(`target already exists: ${target}`, { cause: error });
     }
     throw error;
+  }
+  try {
+    await targetHandle.writeFile(bytes);
+    await targetHandle.sync();
+  } catch (error) {
+    await unlink(target).catch(() => {});
+    throw error;
   } finally {
-    try {
-      await unlink(stage);
-    } catch (error) {
-      const state = published ? "report was published" : "report was not published";
-      throw new Error(`${state}, but the internal stage could not be removed: ${stage}`, {
-        cause: error,
-      });
-    }
+    await targetHandle.close();
   }
 
   const currentDraftStat = await lstat(draft);
@@ -149,16 +136,23 @@ function isMainModule() {
 
 if (isMainModule()) {
   const [namespace, draftPath, targetPath, expectedSha256] = process.argv.slice(2);
-  try {
-    const publishedPath = await publishReport({
-      namespace,
-      draftPath,
-      targetPath,
-      expectedSha256,
-    });
-    process.stdout.write(`${JSON.stringify({ published_path: publishedPath })}\n`);
-  } catch (error) {
-    process.stderr.write(`chat-publish-report: ${error.message}\n`);
+  if (!namespace || !draftPath || !targetPath || !expectedSha256) {
+    process.stderr.write(
+      "usage: chat-publish-report.mjs <namespace> <draft-path> <target-path> <expected-sha256>\n",
+    );
     process.exitCode = 1;
+  } else {
+    try {
+      const publishedPath = await publishReport({
+        namespace,
+        draftPath,
+        targetPath,
+        expectedSha256,
+      });
+      process.stdout.write(`${JSON.stringify({ published_path: publishedPath })}\n`);
+    } catch (error) {
+      process.stderr.write(`chat-publish-report: ${error.message}\n`);
+      process.exitCode = 1;
+    }
   }
 }

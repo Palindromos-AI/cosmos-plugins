@@ -138,20 +138,27 @@ function isMainModule() {
 
 if (isMainModule()) {
   const [command, skill, statePath, runId, failureCode, phase] = process.argv.slice(2);
-  try {
-    if (command !== "begin") {
-      throw new Error("command must be begin");
-    }
-    const response = await beginRepair({
-      skill,
-      statePath,
-      runId,
-      failureCode,
-      phase,
-    });
-    process.stdout.write(`${JSON.stringify(response)}\n`);
-  } catch (error) {
-    process.stderr.write(`chat-repair-state: ${error.message}\n`);
+  if (!command || !skill || !statePath || !runId || !failureCode || !phase) {
+    process.stderr.write(
+      "usage: chat-repair-state.mjs begin <skill> <state-path> <run-id> <failure-code> <phase>\n",
+    );
     process.exitCode = 1;
+  } else {
+    try {
+      if (command !== "begin") {
+        throw new Error("command must be begin");
+      }
+      const response = await beginRepair({
+        skill,
+        statePath,
+        runId,
+        failureCode,
+        phase,
+      });
+      process.stdout.write(`${JSON.stringify(response)}\n`);
+    } catch (error) {
+      process.stderr.write(`chat-repair-state: ${error.message}\n`);
+      process.exitCode = 1;
+    }
   }
 }
