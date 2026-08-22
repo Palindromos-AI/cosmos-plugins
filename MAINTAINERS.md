@@ -31,4 +31,5 @@ All suites must pass before any merge or release:
 2. `CHANGELOG.md`, `ARCHITECTURE.md`, `GOTCHAS.md`, and `DECISION.md` reflect the change set.
 3. Grep the tree for developer-specific names (environment names, planet or group names, other agents' tool names, development-project package names): distributed files and repository docs must stay machine-neutral. See the GOTCHAS entry "Maintainer-machine names leak into distributed files and repository docs".
 4. The version is bumped for every plugin whose packaged files changed.
-5. Merge to `main` and push to `origin` only with explicit approval.
+5. Before distributing to the customer, cut the accumulated `## [Unreleased]` section into a dated release section (`## [YYYY-MM-DD] — <short name>`) that lists the plugin versions it ships; `[Unreleased]` stays at the top, empty, for the next cycle.
+6. Merge to `main` and push to `origin` only with explicit approval.

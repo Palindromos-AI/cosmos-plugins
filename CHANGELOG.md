@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-08-22] — First customer release
+
+The first release distributed to a customer. It contains everything below: the complete review-driven hardening of all four plugins, the scripted fix-report channel, the fixed `cosmos` Python environment, Beijing-time standardization, and the proprietary license. Plugin versions in this release: `cosmos-fix-tools` 0.2.1, `cosmos-knowledge-tools` 0.1.6, `cosmos-sources-tools` 0.6.1, `cosmos-stockdata-tools` 0.4.1.
+
 ### Added
 
 - A README "Supported platforms" section: macOS/Linux only (POSIX assumptions), Windows unsupported, Node.js ≥ 22.13, Git, micromamba + uv.
