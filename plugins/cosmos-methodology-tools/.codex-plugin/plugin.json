@@ -1,0 +1,22 @@
+{
+  "name": "cosmos-methodology-tools",
+  "version": "0.2.0",
+  "description": "Turn conversations into durable, user-confirmed methodologies and continuously improve them.",
+  "author": {
+    "name": "Jason"
+  },
+  "homepage": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "repository": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cosmos Methodology Tools",
+    "shortDescription": "Build and maintain reusable methodologies from conversations.",
+    "longDescription": "Packages an explicit-only methodology assistant that inventories the shared Cosmos workspace's Markdown methodology library, lets the user choose whether to incrementally improve an existing methodology or create a new one, drafts changes from the current conversation, and writes only the final user-confirmed revision. The library is the fixed `~/Documents/cosmos-workspace/methodologies` and remains outside the replaceable plugin package.",
+    "developerName": "Jason",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Use $methodology-assistant to create or update a methodology from this conversation."
+    ]
+  }
+}

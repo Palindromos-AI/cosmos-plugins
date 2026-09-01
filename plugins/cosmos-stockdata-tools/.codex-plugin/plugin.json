@@ -1,0 +1,24 @@
+{
+  "name": "cosmos-stockdata-tools",
+  "version": "0.6.0",
+  "description": "Run and incrementally grow per-user China stock-data scripts with a generic SuperMind runtime.",
+  "author": {
+    "name": "Jason"
+  },
+  "homepage": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "repository": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cosmos Stockdata Tools",
+    "shortDescription": "Run and grow durable per-user stock-data scripts.",
+    "longDescription": "Bundles a generic SuperMind runtime and contract-neutral implementation references while each user accumulates reusable China stock-data business scripts in the fixed ~/Documents/cosmos-workspace/stockdata subtree as requirements arrive. File deliveries use stable dataset keys in daily or explicit range directories, refreshing only the same validated dataset identity while different identities coexist. Its local runtime binding remains separate from other plugins; plugin and marketplace updates replace capability code only and never own user settings or workspace data. Each extension preserves existing behavior and follows the source priority SuperMind, then baostock, then AKShare, with explicit provenance and contract-specific validation. Requires each user's own SuperMind account and token, and connects over the network to that user's own SuperMind JupyterHub research environment; remote downloads stay inside the durable workspace unless the user explicitly authorizes writing outside it.",
+    "developerName": "Jason",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Create the first stock-data script in my durable external workspace, starting with SuperMind.",
+      "Extend my existing stockdata workspace with another requested dataset.",
+      "Run a capability already accumulated in my stockdata workspace."
+    ]
+  }
+}

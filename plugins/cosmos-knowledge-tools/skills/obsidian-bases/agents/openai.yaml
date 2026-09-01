@@ -1,0 +1,4 @@
+interface:
+  display_name: "Obsidian Bases"
+  short_description: "创建和编辑 Obsidian Bases（.base）数据库视图"
+  default_prompt: "使用 $obsidian-bases 为我的笔记创建或修改一个 Base 视图。"

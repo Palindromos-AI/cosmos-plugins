@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZSXQ Fetch"
+  short_description: "按北京单日或日期区间提取星球正文、图片、网页、PDF、HTML和Word为纯内容报告，可选筛选"
+  default_prompt: "使用 $zsxq-fetch 按北京时间提取“<星球名称>”指定日期或日期区间发布的内容（可按要求筛选，默认全部），并保存到固定的 sources 工作区。"

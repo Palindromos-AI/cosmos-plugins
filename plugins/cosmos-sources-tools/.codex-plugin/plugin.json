@@ -1,0 +1,27 @@
+{
+  "name": "cosmos-sources-tools",
+  "version": "0.18.0",
+  "description": "Fetch and locally archive single-day or date-range source content from CLS, Knowledge Planet, DingTalk, and Feishu, with optional semantic filtering.",
+  "author": {
+    "name": "Jason"
+  },
+  "homepage": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "repository": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cosmos Sources Tools",
+    "shortDescription": "Archive CLS, Knowledge Planet, DingTalk, and Feishu content by Beijing date.",
+    "longDescription": "Retrieves the complete China Standard Time CLS telegraph feed over the network from cls.cn, archives topics and attachments from one Knowledge Planet by operating the user's already signed-in Chrome session, or reads exact DingTalk and Feishu groups by operating the user's already signed-in desktop sessions. Every skill covers today, one historical Beijing calendar date, or one contiguous Beijing date range of at most 31 days merged into a single report, and applies an optional natural-language semantic filter (the complete unfiltered content by default); the Knowledge Planet skill additionally accepts a user-stated extraction scope, such as excluding content types (images, linked pages, PDF, HTML, Word) or keeping one version of multi-version documents. All four skills write source-grounded Markdown under source-specific Beijing-date or range directories in the fixed sources workspace `~/Documents/cosmos-workspace/sources`, which a run creates when missing; a same-identity rerun refreshes its generated file while different identities coexist. Plugin updates replace capability code only and never own user data.",
+    "developerName": "Jason",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Fetch the CLS telegraph feed for a Beijing date or date range, optionally filtered by topic.",
+      "Archive topics and attachments from a Knowledge Planet for one Beijing date or a date range.",
+      "Collect messages from exact DingTalk or Feishu groups for a Beijing date or range into source-faithful Markdown, with an optional filter."
+    ]
+  }
+}

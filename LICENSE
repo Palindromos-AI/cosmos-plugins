@@ -1,0 +1,30 @@
+Palindromos Proprietary License
+
+Copyright (c) 2026 Palindromos. All rights reserved.
+
+This marketplace, its plugins, Skills, scripts, references, and documentation
+(together, "the Software") are proprietary to Palindromos and are made
+available only to customers who have a written agreement with Palindromos
+("Licensees").
+
+1. Permitted use. A Licensee may install and use the Software on machines
+   the Licensee controls, and may modify installed copies for the Licensee's
+   own internal use.
+
+2. Restrictions. Except as expressly permitted above or agreed in writing by
+   Palindromos, no one may copy, redistribute, sublicense, sell, publish,
+   host, or otherwise make the Software or any modified version of it
+   available to a third party. A Licensee may, however, publish in the
+   report repository designated for the fix-report workflow the sanitized
+   reports that workflow produces, including the excerpts or diffs of the
+   Software needed to describe a change.
+
+3. Third-party components. Portions of the Software are derived from
+   third-party open-source projects and remain governed by their own
+   licenses, which take precedence for those portions.
+
+4. No warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+   IN NO EVENT SHALL PALINDROMOS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY ARISING FROM OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.

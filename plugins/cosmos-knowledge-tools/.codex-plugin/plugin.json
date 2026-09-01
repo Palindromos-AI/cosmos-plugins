@@ -1,0 +1,22 @@
+{
+  "name": "cosmos-knowledge-tools",
+  "version": "0.1.7",
+  "description": "Knowledge management, Obsidian, web extraction, and source conversion workflows for Cosmos.",
+  "author": {
+    "name": "Jason"
+  },
+  "homepage": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "repository": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cosmos Knowledge Tools",
+    "shortDescription": "Manage Cosmos knowledge and Obsidian workflows.",
+    "longDescription": "Packages Cosmos workflows for web extraction, Obsidian editing, structured wiki maintenance, Canvas and Bases authoring, and auditable raw-source conversion. The defuddle web-extraction skill downloads its npm package on demand through npx and fetches the requested web pages over the network.",
+    "developerName": "Jason",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Help me manage my Cosmos knowledge base."
+    ]
+  }
+}

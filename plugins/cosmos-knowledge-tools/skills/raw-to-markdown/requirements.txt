@@ -1,0 +1,98 @@
+# Locked with: micromamba run -n cosmos uv pip compile requirements.txt --no-header (from the repository root)
+# Top-level: markitdown (conversion engine), pdfplumber (PDF prose postprocessor).
+beautifulsoup4==4.15.0
+    # via
+    #   markdownify
+    #   markitdown
+certifi==2026.7.22
+    # via requests
+cffi==2.1.1
+    # via cryptography
+charset-normalizer==3.5.1
+    # via
+    #   markitdown
+    #   pdfminer-six
+    #   requests
+click==8.4.2
+    # via magika
+cobble==0.1.4
+    # via mammoth
+cryptography==50.0.0
+    # via pdfminer-six
+defusedxml==0.7.1
+    # via markitdown
+et-xmlfile==2.0.0
+    # via openpyxl
+flatbuffers==25.12.19
+    # via onnxruntime
+idna==3.19
+    # via requests
+lxml==6.1.2
+    # via
+    #   markitdown
+    #   python-pptx
+magika==0.6.3
+    # via markitdown
+mammoth==1.11.0
+    # via markitdown
+markdownify==1.2.3
+    # via markitdown
+markitdown==0.1.6
+    # via -r plugins/cosmos-knowledge-tools/skills/raw-to-markdown/requirements.txt
+numpy==2.5.2
+    # via
+    #   magika
+    #   onnxruntime
+    #   pandas
+olefile==0.47
+    # via markitdown
+onnxruntime==1.29.0
+    # via magika
+openpyxl==3.1.5
+    # via markitdown
+packaging==26.3
+    # via onnxruntime
+pandas==3.0.5
+    # via markitdown
+pdfminer-six==20260107
+    # via
+    #   markitdown
+    #   pdfplumber
+pdfplumber==0.11.10
+    # via
+    #   -r plugins/cosmos-knowledge-tools/skills/raw-to-markdown/requirements.txt
+    #   markitdown
+pillow==12.3.0
+    # via
+    #   pdfplumber
+    #   python-pptx
+protobuf==7.36.0
+    # via onnxruntime
+pycparser==3.0
+    # via cffi
+pypdfium2==5.13.0
+    # via pdfplumber
+python-dateutil==2.9.0.post0
+    # via pandas
+python-dotenv==1.2.3
+    # via magika
+python-pptx==1.0.2
+    # via markitdown
+requests==2.34.2
+    # via markitdown
+six==1.17.0
+    # via
+    #   markdownify
+    #   python-dateutil
+soupsieve==2.9.2
+    # via beautifulsoup4
+typing-extensions==4.16.0
+    # via
+    #   beautifulsoup4
+    #   python-pptx
+urllib3==2.7.0
+    # via requests
+xlrd==2.0.2
+    # via markitdown
+xlsxwriter==3.2.9
+    # via python-pptx

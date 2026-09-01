@@ -1,0 +1,22 @@
+{
+  "name": "cosmos-fix-tools",
+  "version": "0.3.0",
+  "description": "Automatically record, commit, and push sanitized reports for changes to Cosmos marketplace content.",
+  "author": {
+    "name": "Jason"
+  },
+  "homepage": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "repository": "https://github.com/Palindromos-AI/cosmos-plugins",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cosmos Fix Tools",
+    "shortDescription": "Automatically report marketplace fixes.",
+    "longDescription": "Records sanitized reports for packaged Cosmos marketplace changes, then automatically creates a Git commit and pushes only the report to the user's own public fix-reports repository on GitHub without a further approval step. The marketplace source repository is never committed or pushed.",
+    "developerName": "Jason",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Use $fix-report to automatically record and push a sanitized report for a Cosmos marketplace content change."
+    ]
+  }
+}

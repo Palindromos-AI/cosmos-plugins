@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLS Fetch"
+  short_description: "按单日或日期区间汇总财联社电报，可选语义筛选，保留完整原文和来源链接"
+  default_prompt: "使用 $cls-fetch 获取指定北京日期或日期区间的财联社电报（可按主题筛选，默认全部），保留原文并输出到固定的 sources 工作区。"

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Raw to Markdown"
+  short_description: "将 raw 来源文件转换为可追溯的同目录 Markdown"
+  default_prompt: "使用 $raw-to-markdown 将我指定的 raw 来源文件转换为同目录 Markdown，并保留原文件索引。"
+policy:
+  # The SKILL requires an explicit conversion request; never trigger implicitly.
+  allow_implicit_invocation: false

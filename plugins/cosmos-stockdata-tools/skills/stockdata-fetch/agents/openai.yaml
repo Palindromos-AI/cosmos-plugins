@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stockdata Fetch"
+  short_description: "记录个人 SuperMind token 路径并按需求扩展持久股票数据脚本"
+  default_prompt: "使用 $stockdata-fetch 记录个人 SuperMind token 文件路径，再按需求逐步扩展固定 stockdata 工作区中的脚本。"
