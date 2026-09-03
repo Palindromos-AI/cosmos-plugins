@@ -1,4 +1,4 @@
 interface:
   display_name: "Feishu Fetch"
-  short_description: "按北京单日或日期区间读取指定飞书群消息并提取原文，可选筛选"
-  default_prompt: "使用 $feishu-fetch 读取指定飞书群一个北京日期或日期区间的消息（可按要求筛选，默认全部），并保存到固定的 sources 工作区。"
+  short_description: "按北京单日或日期区间读取指定飞书群消息并提取原文，可选筛选、可选不读图片"
+  default_prompt: "使用 $feishu-fetch 读取指定飞书群一个北京日期或日期区间的消息（可按要求筛选，默认全部；可选不读取图片），并保存到固定的 sources 工作区。"

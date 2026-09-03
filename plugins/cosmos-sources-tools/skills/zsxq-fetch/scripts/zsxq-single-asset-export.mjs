@@ -1,7 +1,7 @@
-import { realpathSync } from "node:fs";
 import { open, rm, stat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+import { isMainEntry } from "../../../scripts/workspace-runtime.mjs";
 
 export const DEFAULT_EXPORT_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_EXPORT_BYTES = 50 * 1024 * 1024;
@@ -154,23 +154,30 @@ export async function exportSingleAsset({
       output_path: requestedOutput,
       byte_length: bytes.length,
       content_type: contentType,
-      remote_export_attempts: 1,
-      remote_export_batch_size: 1,
     };
   } finally {
     clearTimeout(timer);
   }
 }
 
+// Strict: an unknown flag is an error, never a silently ignored typo.
 function parseArguments(argv) {
-  const options = {};
-  for (let index = 0; index < argv.length; index += 2) {
-    const key = argv[index];
-    const value = argv[index + 1];
-    if (!key?.startsWith("--") || value === undefined) {
-      throw new Error("Arguments must be --name value pairs");
+  const { values: options } = parseArgs({
+    args: argv,
+    options: {
+      workspace: { type: "string" },
+      url: { type: "string" },
+      output: { type: "string" },
+      kind: { type: "string" },
+      timeout: { type: "string" },
+    },
+    strict: true,
+    allowPositionals: false,
+  });
+  for (const required of ["workspace", "url", "output"]) {
+    if (!options[required]) {
+      throw new Error(`Missing --${required}`);
     }
-    options[key.slice(2)] = value;
   }
   return options;
 }
@@ -187,22 +194,7 @@ async function main(argv) {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-// Resolve the invoked path before comparing: Node resolves `import.meta.url`
-// through symbolic links but leaves `process.argv[1]` as typed.
-function isMainModule() {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  let resolved = entry;
-  try {
-    resolved = realpathSync(entry);
-  } catch {
-    // keep the unresolved path; the comparison below still decides
-  }
-  return import.meta.url === pathToFileURL(entry).href
-    || import.meta.url === pathToFileURL(resolved).href;
-}
-
-if (isMainModule()) {
+if (isMainEntry(import.meta.url)) {
   main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

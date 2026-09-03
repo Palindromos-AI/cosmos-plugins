@@ -146,6 +146,40 @@ export function requireCalendarDate(value) {
 }
 
 
+export const MAX_RANGE_DAYS = 31;
+
+
+// Validate one contiguous multi-day range: real calendar dates, start strictly
+// before end (a single day uses the daily directory), and at most 31 days.
+// Every range writer resolves its path through here, so the cap has one home.
+export function requireDateRange(startDate, endDate) {
+  const start = requireCalendarDate(startDate);
+  const end = requireCalendarDate(endDate);
+  if (start >= end) {
+    throw new WorkspaceRuntimeError(
+      "range start date must be strictly earlier than the end date; single days use the daily output directory",
+    );
+  }
+  const days = Math.round(
+    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000,
+  ) + 1;
+  if (days > MAX_RANGE_DAYS) {
+    throw new WorkspaceRuntimeError(`date range must span at most ${MAX_RANGE_DAYS} days`);
+  }
+  return { start, end, days };
+}
+
+
+// A report's date key is one Beijing date or `YYYY-MM-DD_to_YYYY-MM-DD`.
+// Returns null for anything not in range form; a range form is validated.
+export function splitDateRangeKey(value) {
+  const match = /^(\d{4}-\d{2}-\d{2})_to_(\d{4}-\d{2}-\d{2})$/u.exec(
+    typeof value === "string" ? value : "",
+  );
+  return match ? requireDateRange(match[1], match[2]) : null;
+}
+
+
 // Confine one final report to `<workspace>/output/<namespace>/<leaf>/<file>`
 // and create that directory. Every argument is validated before the workspace
 // is touched, so a rejected call creates nothing; both the requested path and
@@ -196,13 +230,7 @@ export async function resolveRangeOutputPath(
   startDate,
   endDate,
 ) {
-  const start = requireCalendarDate(startDate);
-  const end = requireCalendarDate(endDate);
-  if (start >= end) {
-    throw new WorkspaceRuntimeError(
-      "range start date must be strictly earlier than the end date; single days use the daily output directory",
-    );
-  }
+  const { start, end } = requireDateRange(startDate, endDate);
   const { target, directory, contained } = await resolveConfinedOutputPath(
     outputPath,
     options,

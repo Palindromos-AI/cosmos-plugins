@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { parseArgs as parseCliArgs } from "node:util";
+import { MAX_RANGE_DAYS, isMainEntry } from "../../../scripts/workspace-runtime.mjs";
 
 export const TIME_ZONE = "Asia/Shanghai";
 export const DEFAULT_BASE_URL = "https://www.cls.cn";
@@ -59,8 +59,6 @@ export function formatShanghaiDate(date = new Date()) {
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
   return `${values.year}-${values.month}-${values.day}`;
 }
-
-export const MAX_RANGE_DAYS = 31;
 
 function dayStartSeconds(dateString) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
@@ -408,16 +406,31 @@ function parsePageSize(value) {
   return number;
 }
 
+const CLI_OPTIONS = Object.freeze({
+  output: { type: "string" },
+  date: { type: "string" },
+  "end-date": { type: "string" },
+  now: { type: "string" },
+  "base-url": { type: "string" },
+  "page-size": { type: "string" },
+  "max-pages": { type: "string" },
+  "delay-ms": { type: "string" },
+  "timeout-ms": { type: "string" },
+});
+
+// Strict: an unknown or valueless flag is an error, never a silently ignored
+// typo that would fetch a different window.
 export function parseArgs(argv) {
-  const options = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const flag = argv[index];
-    const value = argv[index + 1];
-    if (!flag.startsWith("--") || value === undefined) {
-      throw new ClsFetchError(`Expected --flag value, received ${flag}`);
-    }
-    options[flag.slice(2)] = value;
-    index += 1;
+  let options;
+  try {
+    ({ values: options } = parseCliArgs({
+      args: argv,
+      options: CLI_OPTIONS,
+      strict: true,
+      allowPositionals: false,
+    }));
+  } catch (error) {
+    throw new ClsFetchError(error.message);
   }
 
   if (!options.output) {
@@ -465,22 +478,7 @@ async function main() {
   );
 }
 
-// Resolve the invoked path before comparing: Node resolves `import.meta.url`
-// through symbolic links but leaves `process.argv[1]` as typed.
-function isMainModule() {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  let resolved = entry;
-  try {
-    resolved = realpathSync(entry);
-  } catch {
-    // keep the unresolved path; the comparison below still decides
-  }
-  return import.meta.url === pathToFileURL(entry).href
-    || import.meta.url === pathToFileURL(resolved).href;
-}
-
-if (isMainModule()) {
+if (isMainEntry(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`cls-fetch: ${formatCliError(error)}\n`);
     process.exitCode = 1;

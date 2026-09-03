@@ -15,7 +15,7 @@ Collect the complete CLS telegraph feed for the requested Beijing date or date r
 - A natural-language filter condition is optional. Without one, collect the complete unfiltered content; do not ask for a filter.
 - Interpret “today” and every requested date in `Asia/Shanghai`, regardless of the user's local timezone. Accept one date (default today) or one contiguous range of at most 31 Shanghai calendar days whose end is not in the future; a range whose start equals its end is a single-day request.
 - Choose one stable semantic `<scope-key>` and matching `<short-filter-name>` for the requested information requirement. Reuse that key and path when later wording has the same meaning — for example, “AI 相关信息” and “与人工智能有关的信息” are one scope — and choose a new key and file when the required information materially changes. Never use the raw filter sentence as identity; wording alone does not change identity. An unfiltered run always uses the reserved scope key `all` with the fixed wording `全部内容`.
-- Default the output to `<sources-workspace>/output/cls/YYYY-MM-DD/<short-filter-name>.md` for a single date and `<sources-workspace>/output/cls/ranges/<start>_to_<end>/<short-filter-name>.md` for a range, unless the user supplies a path in that exact directory. Without a filter, the default filename is `全部内容.md`. Replace path separators in the derived short filter name with `-`.
+- Default the output to `<sources-workspace>/output/cls/YYYY-MM-DD/<short-filter-name>.md` for a single date and `<sources-workspace>/output/cls/ranges/<start>_to_<end>/<short-filter-name>.md` for a range, unless the user supplies a path in that exact directory. Without a filter, the default filename is `全部内容.md`. Replace `/`, `\`, and control characters in the derived short filter name with `-`.
 
 ### 2. Fetch the complete window
 
@@ -43,7 +43,6 @@ Read the fetched items directly from `<temp-dir>/source.json` and judge each one
 
 - Judge the full `content` (or `brief`), title, CLS subjects, and associated stocks together.
 - Include direct matches and meaningful upstream, downstream, policy, financing, supply-chain, application, or competitive effects. Do not require the filter words to appear; prefer recall over precision, and include an item when uncertain.
-- For an AI-related filter, include relevant AI chips, compute infrastructure and data centers, models, robotics, autonomous driving, AI applications, regulation, safety, financing, mergers, talent, and material supply-chain developments.
 - Collect the selected numeric message IDs. Do not rewrite, summarize, translate, or “clean up” source text.
 
 ### 4. Render unchanged source text
@@ -75,8 +74,6 @@ The renderer must be the only component that writes the final Markdown. It copie
 
 ## Hard rules
 
-- Keep all results local; never publish, upload, email, or message them.
-- Never use an external LLM API. The Codex instance executing this skill performs classification.
 - Never fall back to visible-page scraping or a third-party feed, silently or otherwise.
 
 ## Marketplace change reporting

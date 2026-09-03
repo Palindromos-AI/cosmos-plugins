@@ -1,6 +1,6 @@
 # Feishu image content extraction
 
-Use this procedure for every image attached to an in-window Feishu message. The image may determine whether the parent message satisfies the filter, so do not skip an image only because the surrounding text looks irrelevant.
+Use this procedure for every image attached to an in-window Feishu message. The image may determine whether the parent message satisfies the filter, so do not skip an image only because the surrounding text looks irrelevant. Skip this procedure only for an image `SKILL.md` step 2 omits — every image when the run's extraction scope excludes image content, and an image that is only a chart or graph; step 2 then governs.
 
 ## Associate and acquire
 

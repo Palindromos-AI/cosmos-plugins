@@ -2,14 +2,12 @@
 
 // Shared Beijing calendar-window resolver for dingding-fetch and feishu-fetch.
 
-import { realpathSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { MAX_RANGE_DAYS, isMainEntry } from "./workspace-runtime.mjs";
 
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_RANGE_DAYS = 31;
 const DATE_ERROR = "date must be a real YYYY-MM-DD Beijing date not later than today";
 
 function beijingDate(instant) {
@@ -87,22 +85,14 @@ export function resolveChatDateWindow({ date, endDate, now = new Date() } = {}) 
   };
 }
 
-function isMainModule() {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  let resolved = path.resolve(entry);
+if (isMainEntry(import.meta.url)) {
   try {
-    resolved = realpathSync(resolved);
-  } catch {
-    // keep the unresolved path; the comparison below still decides
-  }
-  const self = fileURLToPath(import.meta.url);
-  return path.resolve(entry) === self || resolved === self;
-}
-
-if (isMainModule()) {
-  const args = process.argv.slice(2);
-  try {
+    const { positionals: args } = parseArgs({
+      args: process.argv.slice(2),
+      allowPositionals: true,
+      strict: true,
+      options: {},
+    });
     if (args.length > 2) {
       throw new TypeError("usage: chat-date-window.mjs [YYYY-MM-DD [YYYY-MM-DD]]");
     }

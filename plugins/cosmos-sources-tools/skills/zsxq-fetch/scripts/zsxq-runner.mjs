@@ -9,17 +9,18 @@
 
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { parseArgs } from "node:util";
 import { withOutputLock } from "../../../scripts/output-lock.mjs";
 import {
   isMainEntry,
   requireCalendarDate,
+  requireDateRange,
   resolveDatedOutputPath,
   resolveRangeOutputPath,
 } from "../../../scripts/workspace-runtime.mjs";
 import { beijingDisplayFromTimestamp } from "./zsxq-time.mjs";
 
 const GENERATOR = "zsxq-fetch";
-const MAX_RANGE_DAYS = 31;
 // The reserved unfiltered scope key: an unfiltered day carries `filter: null`
 // and its marker has no scope field, so no filtered run may claim `all`.
 const ALL_SCOPE_KEY = "all";
@@ -574,17 +575,7 @@ export function renderDayReport(day) {
 // Beijing range [startDate, endDate], newest day first. Identity must agree
 // across the days; day-set completeness is the agent's responsibility.
 export function renderRangeReport(days, { startDate, endDate }) {
-  requireCalendarDate(startDate);
-  requireCalendarDate(endDate);
-  if (startDate >= endDate) {
-    fail("range", "start date must be strictly earlier than the end date");
-  }
-  const spanDays = Math.round(
-    (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000,
-  ) + 1;
-  if (spanDays > MAX_RANGE_DAYS) {
-    fail("range", `must span at most ${MAX_RANGE_DAYS} days`);
-  }
+  requireDateRange(startDate, endDate);
   if (!Array.isArray(days) || days.length === 0) {
     fail("range", "requires at least one day record");
   }
@@ -806,23 +797,23 @@ const USAGE = [
   "  zsxq-runner.mjs publish-range --input <day.json> [--input <day.json> ...] --start <YYYY-MM-DD> --end <YYYY-MM-DD> --output <.../output/zsxq/ranges/<start>_to_<end>/planet.md>",
 ].join("\n");
 
+// Strict: an unknown flag is an error, never a silently ignored typo.
 function parseCliArgs(argv) {
-  const [command, ...rest] = argv;
-  const options = { inputs: [] };
-  for (let index = 0; index < rest.length; index += 1) {
-    const flag = rest[index];
-    const value = rest[index + 1];
-    if (!flag.startsWith("--") || value === undefined) {
-      throw new Error(`Expected --flag value, received ${flag}`);
-    }
-    if (flag === "--input") {
-      options.inputs.push(value);
-    } else {
-      options[flag.slice(2)] = value;
-    }
-    index += 1;
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      input: { type: "string", multiple: true },
+      output: { type: "string" },
+      start: { type: "string" },
+      end: { type: "string" },
+    },
+    strict: true,
+    allowPositionals: true,
+  });
+  if (positionals.length !== 1) {
+    throw new Error(USAGE);
   }
-  return { command, options };
+  return { command: positionals[0], options: { ...values, inputs: values.input ?? [] } };
 }
 
 async function readDayInput(inputPath) {

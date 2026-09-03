@@ -3,8 +3,8 @@
 // Publish chat-source reports into one date directory per Beijing target date
 // or one ranges/<start>_to_<end> directory per merged range. The publisher
 // appends the hidden identity marker itself. Repeated runs for the same stable
-// scope key and group list refresh the same path; different scopes and
-// user-owned files are never overwritten.
+// scope key, group list, and extraction scope refresh the same path; different
+// scopes and user-owned files are never overwritten.
 
 import { randomUUID } from "node:crypto";
 import { lstat, open, readFile, rename, unlink } from "node:fs/promises";
@@ -16,10 +16,10 @@ import {
   requireCalendarDate,
   resolveDatedOutputPath,
   resolveRangeOutputPath,
+  splitDateRangeKey,
 } from "./workspace-runtime.mjs";
 
 const NAMESPACES = new Set(["dingtalk", "feishu"]);
-const MAX_RANGE_DAYS = 31;
 // The reserved unfiltered scope: key and display wording are fixed together.
 const ALL_SCOPE_KEY = "all";
 const ALL_FILTER_TEXT = "全部内容";
@@ -39,33 +39,29 @@ function requireText(value, label) {
 }
 
 // A report covers either one Beijing date or a merged YYYY-MM-DD_to_YYYY-MM-DD range.
-export function splitDateRange(value) {
-  const match = /^(\d{4}-\d{2}-\d{2})_to_(\d{4}-\d{2}-\d{2})$/u.exec(
-    typeof value === "string" ? value : "",
-  );
-  if (!match) return null;
-  const start = requireCalendarDate(match[1]);
-  const end = requireCalendarDate(match[2]);
-  if (start >= end) {
-    throw new TypeError("date range start must be strictly earlier than its end");
-  }
-  const days = Math.round(
-    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000,
-  ) + 1;
-  if (days > MAX_RANGE_DAYS) {
-    throw new TypeError(`date range must span at most ${MAX_RANGE_DAYS} days`);
-  }
-  return { start, end };
-}
-
 function requireDate(value) {
   if (typeof value === "string" && value.includes("_to_")) {
-    if (!splitDateRange(value)) {
+    if (!splitDateRangeKey(value)) {
       throw new TypeError("date range must use YYYY-MM-DD_to_YYYY-MM-DD");
     }
     return value;
   }
   return requireCalendarDate(value);
+}
+
+// An extraction scope limits what is read from each selected message (in
+// chat, image content). Absent means full extraction and leaves the encoded
+// scope byte-identical to earlier releases.
+function requireExtract(extract) {
+  if (extract === undefined || extract === null) return null;
+  if (typeof extract !== "object" || Array.isArray(extract)) {
+    throw new TypeError("scope.extract must be an object with key and requirement");
+  }
+  const key = requireText(extract.key, "scope.extract.key");
+  if (key === ALL_SCOPE_KEY) {
+    throw new TypeError(`scope.extract.key "${ALL_SCOPE_KEY}" is reserved for full extraction`);
+  }
+  return { key, requirement: requireText(extract.requirement, "scope.extract.requirement") };
 }
 
 function requireScope(scope) {
@@ -84,7 +80,8 @@ function requireScope(scope) {
       `scope.key "${ALL_SCOPE_KEY}" is reserved for the unfiltered ${ALL_FILTER_TEXT} scope`,
     );
   }
-  return { key, groups, filter };
+  const extract = requireExtract(scope.extract);
+  return { key, groups, filter, ...(extract ? { extract } : {}) };
 }
 
 function normalizeReport({ namespace, date, snapshotAt, completeness, scope }) {
@@ -149,6 +146,7 @@ function sameScope(left, right) {
     && left.scope.key === right.scope.key
     && left.scope.groups.length === right.scope.groups.length
     && left.scope.groups.every((group, index) => group === right.scope.groups[index])
+    && (left.scope.extract?.key ?? null) === (right.scope.extract?.key ?? null)
   );
 }
 
@@ -251,7 +249,7 @@ export async function publishReport({
     throw new Error("target must be a .md target");
   }
 
-  const reportRange = splitDateRange(report.date);
+  const reportRange = splitDateRangeKey(report.date);
   const target = reportRange
     ? await resolveRangeOutputPath(
       requestedTarget,
@@ -266,12 +264,12 @@ export async function publishReport({
       report.namespace,
       report.date,
     );
-  if (path.dirname(draft) !== path.dirname(target)) {
-    throw new Error("draft and target must be in the same output directory");
-  }
   const canonical = canonicalPathFor(target, report.completeness);
   const partial = incompletePath(canonical);
 
+  // The draft is only read, never renamed into place, so it lives wherever
+  // the agent keeps run files (the private run directory), not beside the
+  // target where a failed run would leave it behind.
   const draftBytes = await readRegularFile(draft);
   if (draftBytes === null) {
     throw new Error(`draft does not exist: ${draft}`);
@@ -348,7 +346,8 @@ if (isMainEntry(import.meta.url)) {
         completeness: { type: "string" },
       },
     });
-  } catch {
+  } catch (error) {
+    process.stderr.write(`chat-publish-report: ${error.message}\n`);
     parsed = null;
   }
   const positionals = parsed?.positionals ?? [];
