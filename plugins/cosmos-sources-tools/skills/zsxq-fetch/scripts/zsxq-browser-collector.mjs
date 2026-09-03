@@ -6,7 +6,7 @@ import {
 // The single active DOM contract. A live DOM change is repaired here (with the
 // user's approval) by bumping the version string and adjusting the selectors.
 export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
-  version: "zsxq-web-angular-v10",
+  version: "zsxq-web-angular-v11",
   timestampReadCountOptional: true,
   explicitLinkHrefRequired: true,
   ignoreUnsupportedFileCardsOutsideTargetDate: true,
@@ -430,9 +430,6 @@ export function inspectZsxqTimelinePage(input) {
         : exactlyOne(item, selectors.filePdfIndicator);
       const pdfIndicators = exactlyOne(item, selectors.filePdfIndicator);
       const filename = names.count === 1 ? text(names.elements[0]).trim() : "";
-      const filePlatformId = typeof item.getAttribute === "function"
-        ? item.getAttribute("data-file-id")
-        : null;
       const fileType = /\.pdf$/iu.test(filename)
         ? "pdf"
         : /\.html?$/iu.test(filename)
@@ -446,8 +443,6 @@ export function inspectZsxqTimelinePage(input) {
         || pdfIndicators.count !== (fileType === "pdf" ? 1 : 0)
         || filename === ""
         || fileType === null
-        || typeof filePlatformId !== "string"
-        || !/^[A-Za-z0-9_-]+$/u.test(filePlatformId)
       ) {
         if (
           adapter.ignoreUnsupportedFileCardsOutsideTargetDate === true
@@ -464,7 +459,6 @@ export function inspectZsxqTimelinePage(input) {
           fileName: names.count,
           fileIcon: fileIcons.count,
           pdfIndicator: pdfIndicators.count,
-          stableFileId: typeof filePlatformId === "string" && filePlatformId !== "" ? 1 : 0,
         });
       }
       files.push({
@@ -472,7 +466,6 @@ export function inspectZsxqTimelinePage(input) {
         type: fileType,
         filename,
         fileOrdinal: fileIndex + 1,
-        filePlatformId,
       });
     }
     const ordered = [
@@ -528,10 +521,7 @@ export function inspectZsxqTimelinePage(input) {
               ...(stablePageId ? { stable_page_id: stablePageId } : {}),
             }
           : {
-              source: {
-                platform_id: entry.filePlatformId,
-                ...(entry.href ? { transport_url: entry.href } : {}),
-              },
+              source: entry.href ? { transport_url: entry.href } : {},
               filename,
               ...(entry.fileOrdinal === undefined
                 ? {}
@@ -843,9 +833,6 @@ export function inspectZsxqDetailPage(input) {
       : [...item.querySelectorAll(selectors.filePdfIndicator)];
     const pdfIndicators = [...item.querySelectorAll(selectors.filePdfIndicator)];
     const filename = names.length === 1 ? detailText(names[0]).trim() : "";
-    const filePlatformId = typeof item.getAttribute === "function"
-      ? item.getAttribute("data-file-id")
-      : null;
     const fileType = /\.pdf$/iu.test(filename)
       ? "pdf"
       : /\.html?$/iu.test(filename)
@@ -859,18 +846,15 @@ export function inspectZsxqDetailPage(input) {
       || pdfIndicators.length !== (fileType === "pdf" ? 1 : 0)
       || filename === ""
       || fileType === null
-      || typeof filePlatformId !== "string"
-      || !/^[A-Za-z0-9_-]+$/u.test(filePlatformId)
     ) {
       return detailFail("DETAIL_FILE_ATTACHMENT_MISMATCH", {
         fileIndex,
         fileName: names.length,
         fileIcon: fileIcons.length,
         pdfIndicator: pdfIndicators.length,
-        stableFileId: typeof filePlatformId === "string" && filePlatformId !== "" ? 1 : 0,
       });
     }
-    fileEntries.push({ element: item, filename, type: fileType, filePlatformId });
+    fileEntries.push({ element: item, filename, type: fileType });
   }
 
   const orderedMedia = [
@@ -884,7 +868,6 @@ export function inspectZsxqDetailPage(input) {
       kind: entry.type,
       file_ordinal: index + 1,
       filename: entry.filename,
-      file_platform_id: entry.filePlatformId,
     })),
   ].sort((left, right) => detailFollows(left.element, right.element));
 
@@ -914,7 +897,6 @@ export function inspectZsxqDetailPage(input) {
         file_ordinal: entry.file_ordinal,
         dom_ordinal: mediaIndex + 1,
         filename: entry.filename,
-        platform_id: entry.file_platform_id,
       });
     }
   }
@@ -1011,14 +993,114 @@ function validateFileDownloadInput(input) {
   ) {
     throw new TypeError("expectedType must match the PDF, HTML, or Word filename extension");
   }
-  const expectedFilePlatformId = input.expectedFilePlatformId;
+  const expectedDisplayedTimestamp = input.expectedDisplayedTimestamp;
   if (
-    typeof expectedFilePlatformId !== "string"
-    || !/^[A-Za-z0-9_-]+$/u.test(expectedFilePlatformId)
+    typeof expectedDisplayedTimestamp !== "string"
+    || !/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?$/u.test(expectedDisplayedTimestamp)
   ) {
-    throw new TypeError("expectedFilePlatformId must be a stable file-card ID");
+    throw new TypeError("expectedDisplayedTimestamp must use YYYY-MM-DD HH:mm[:ss]");
   }
-  return { fileOrdinal, expectedFilename, expectedType, expectedFilePlatformId };
+  parseDisplayedTimestamp(expectedDisplayedTimestamp);
+  return { fileOrdinal, expectedFilename, expectedType, expectedDisplayedTimestamp };
+}
+
+async function locateTimelineFileByTimeAndName(tab, input) {
+  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
+  const matches = await tab.playwright.evaluate(({ selectors: activeSelectors, expectedDisplayedTimestamp, expectedFilename }) => {
+    const ownedTimestampText = (element) => [...(element?.childNodes ?? [])]
+      .filter((node) => Number(node.nodeType) === 3)
+      .map((node) => typeof node.nodeValue === "string" ? node.nodeValue : "")
+      .join("")
+      .trim();
+    const result = [];
+    const topics = [...document.querySelectorAll(activeSelectors.timelineTopic)];
+    topics.forEach((topic, topicIndex) => {
+      if (topic.closest?.(activeSelectors.stickyAncestor)) return;
+      const header = topic.querySelector(activeSelectors.topicHeader);
+      const timestamp = header?.querySelector(activeSelectors.timestamp);
+      if (ownedTimestampText(timestamp) !== expectedDisplayedTimestamp) return;
+      const talk = topic.querySelector(activeSelectors.topicTalk);
+      const files = talk
+        ? [...talk.querySelectorAll(activeSelectors.fileItem)]
+        : [];
+      files.forEach((file, fileIndex) => {
+        const names = [...file.querySelectorAll(activeSelectors.fileName)];
+        if (names.length === 1 && (names[0].innerText ?? "").trim() === expectedFilename) {
+          result.push({ topicIndex, fileIndex });
+        }
+      });
+    });
+    return result;
+  }, {
+    selectors,
+    expectedDisplayedTimestamp: input.expectedDisplayedTimestamp,
+    expectedFilename: input.expectedFilename,
+  });
+  if (matches.length !== 1) {
+    throw new ZsxqBrowserCollectionError(
+      fileDownloadErrorCode(input.expectedType, "FILE_IDENTITY_MISMATCH"),
+      `${input.expectedType}-download`,
+      "The inventoried timeline file is not unique by publication time and filename",
+      { matchCount: matches.length },
+    );
+  }
+  const [{ topicIndex, fileIndex }] = matches;
+  return {
+    fileCard: tab.playwright.locator(selectors.timelineTopic).nth(topicIndex)
+      .locator(selectors.topicTalk)
+      .locator(selectors.fileItem)
+      .nth(fileIndex),
+    diagnostic: { publicationTimeMatched: true, filenameMatched: true },
+  };
+}
+
+async function locateDetailFileByTimeAndName(tab, input) {
+  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
+  const matches = await tab.playwright.evaluate(({ selectors: activeSelectors, expectedDisplayedTimestamp, expectedFilename }) => {
+    const ownedTimestampText = (element) => [...(element?.childNodes ?? [])]
+      .filter((node) => Number(node.nodeType) === 3)
+      .map((node) => typeof node.nodeValue === "string" ? node.nodeValue : "")
+      .join("")
+      .trim();
+    const panels = [...document.querySelectorAll(activeSelectors.detailPanel)];
+    const result = [];
+    panels.forEach((panel, panelIndex) => {
+      const header = panel.querySelector("app-topic-header");
+      const timestamp = header?.querySelector(activeSelectors.timestamp);
+      if (ownedTimestampText(timestamp) !== expectedDisplayedTimestamp) return;
+      const talk = panel.querySelector("app-talk-content");
+      const files = talk
+        ? [...talk.querySelectorAll(activeSelectors.fileItem)]
+        : [];
+      files.forEach((file, fileIndex) => {
+        const names = [...file.querySelectorAll(activeSelectors.fileName)];
+        if (names.length === 1 && (names[0].innerText ?? "").trim() === expectedFilename) {
+          result.push({ panelIndex, fileIndex });
+        }
+      });
+    });
+    return result;
+  }, {
+    selectors,
+    expectedDisplayedTimestamp: input.expectedDisplayedTimestamp,
+    expectedFilename: input.expectedFilename,
+  });
+  if (matches.length !== 1) {
+    throw new ZsxqBrowserCollectionError(
+      fileDownloadErrorCode(input.expectedType, "FILE_IDENTITY_MISMATCH"),
+      `${input.expectedType}-download`,
+      "The inventoried detail-page file is not unique by publication time and filename",
+      { matchCount: matches.length },
+    );
+  }
+  const [{ panelIndex, fileIndex }] = matches;
+  return {
+    fileCard: tab.playwright.locator(selectors.detailPanel).nth(panelIndex)
+      .locator("app-talk-content")
+      .locator(selectors.fileItem)
+      .nth(fileIndex),
+    diagnostic: { publicationTimeMatched: true, filenameMatched: true },
+  };
 }
 
 async function downloadZsxqFileCardOnTab(tab, input) {
@@ -1131,45 +1213,19 @@ export async function downloadZsxqTimelineFileOnTab(tab, input) {
     fileOrdinal,
     expectedFilename,
     expectedType,
-    expectedFilePlatformId,
+    expectedDisplayedTimestamp,
   } = validateFileDownloadInput(input);
-  const { topicDomIndex } = input;
-  if (!Number.isInteger(topicDomIndex) || topicDomIndex < 0) {
-    throw new TypeError("topicDomIndex must be a non-negative integer");
-  }
-
-  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
-  const topic = tab.playwright.locator(selectors.timelineTopic).nth(topicDomIndex);
-  const talk = topic.locator(selectors.topicTalk);
-  const fileItems = talk.locator(selectors.fileItem);
-  const fileCount = await fileItems.count();
-  if (fileOrdinal > fileCount) {
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "FILE_OCCURRENCE_MISMATCH"),
-      `${expectedType}-download`,
-      "The inventoried timeline file occurrence is no longer present",
-      { topicDomIndex, fileOrdinal, fileCount },
-    );
-  }
-  const stableFileCards = talk.locator(
-    `${selectors.fileItem}[data-file-id="${expectedFilePlatformId}"]`,
-  );
-  const stableFileCount = await stableFileCards.count();
-  if (stableFileCount !== 1) {
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "FILE_IDENTITY_MISMATCH"),
-      `${expectedType}-download`,
-      "The inventoried stable file card is no longer present in the source topic",
-      { topicDomIndex, fileOrdinal, stableFileCount },
-    );
-  }
+  const { fileCard, diagnostic } = await locateTimelineFileByTimeAndName(tab, {
+    expectedDisplayedTimestamp,
+    expectedFilename,
+    expectedType,
+  });
   return downloadZsxqFileCardOnTab(tab, {
-    fileCard: stableFileCards,
+    fileCard,
     fileOrdinal,
     expectedFilename,
     expectedType,
-    expectedFilePlatformId,
-    diagnostic: { topicDomIndex },
+    diagnostic,
     timeoutMs: input.timeoutMs,
     pollIntervalMs: input.pollIntervalMs,
   });
@@ -1188,7 +1244,7 @@ export async function downloadZsxqDetailFileOnTab(tab, input) {
     fileOrdinal,
     expectedFilename,
     expectedType,
-    expectedFilePlatformId,
+    expectedDisplayedTimestamp,
   } = validateFileDownloadInput(input);
   const { expectedTopicId } = input;
   if (typeof expectedTopicId !== "string" || !/^\d+$/u.test(expectedTopicId)) {
@@ -1204,40 +1260,17 @@ export async function downloadZsxqDetailFileOnTab(tab, input) {
     );
   }
 
-  const selectors = ZSXQ_BROWSER_CONTRACT.selectors;
-  const talks = tab.playwright.locator(selectors.detailTopic);
-  const talkCount = await talks.count();
-  const fileItems = talkCount === 1
-    ? talks.locator(selectors.fileItem)
-    : null;
-  const fileCount = fileItems ? await fileItems.count() : 0;
-  if (fileOrdinal > fileCount) {
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "FILE_OCCURRENCE_MISMATCH"),
-      `${expectedType}-download`,
-      "The inventoried detail-page file occurrence is no longer present",
-      { expectedTopicId, fileOrdinal, fileCount, detailTopicCount: talkCount },
-    );
-  }
-  const stableFileCards = talks.locator(
-    `${selectors.fileItem}[data-file-id="${expectedFilePlatformId}"]`,
-  );
-  const stableFileCount = await stableFileCards.count();
-  if (stableFileCount !== 1) {
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "FILE_IDENTITY_MISMATCH"),
-      `${expectedType}-download`,
-      "The inventoried stable file card is no longer present on the source detail page",
-      { expectedTopicId, fileOrdinal, stableFileCount },
-    );
-  }
+  const { fileCard, diagnostic } = await locateDetailFileByTimeAndName(tab, {
+    expectedDisplayedTimestamp,
+    expectedFilename,
+    expectedType,
+  });
   return downloadZsxqFileCardOnTab(tab, {
-    fileCard: stableFileCards,
+    fileCard,
     fileOrdinal,
     expectedFilename,
     expectedType,
-    expectedFilePlatformId,
-    diagnostic: { expectedTopicId },
+    diagnostic: { ...diagnostic, expectedTopicId },
     timeoutMs: input.timeoutMs,
     pollIntervalMs: input.pollIntervalMs,
   });
@@ -2071,7 +2104,7 @@ export async function collectZsxqTimelineRangeOnTab(tab, input) {
         file_ordinal: attachment.file_ordinal,
         dom_topic_index: topic.dom_topic_index,
         filename: attachment.filename,
-        expected_file_platform_id: attachment.source.platform_id,
+        expected_displayed_timestamp: topic.displayed_timestamp,
       }))),
     skipped_topics: skippedTopics,
     unproven_sticky_topics: unprovenStickyTopicRecords,
@@ -2151,7 +2184,7 @@ export async function collectZsxqDetailOnTab(tab, input) {
       file_ordinal: file.file_ordinal,
       dom_ordinal: file.dom_ordinal,
       filename: file.filename,
-      expected_file_platform_id: file.platform_id,
+      expected_displayed_timestamp: snapshot.displayed_timestamp,
     })),
   };
 }
