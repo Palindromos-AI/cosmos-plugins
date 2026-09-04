@@ -1,6 +1,6 @@
 # ZSXQ collector and runner contract
 
-Two Node.js layers back this skill. The **browser collector** (`scripts/zsxq-browser-collector.mjs`) drives the already-authenticated tab and extracts the timeline; the **runner** (`scripts/zsxq-runner.mjs`) renders and safely publishes the reader report from a day JSON the agent assembles.
+Two Node.js layers back this skill. The **browser collectors** drive already-authenticated tabs: `scripts/zsxq-browser-collector.mjs` extracts the Knowledge Planet timeline and topic details, while `scripts/zsxq-linked-page-collector.mjs` reads an external linked page and preserves its direct file links. The **runner** (`scripts/zsxq-runner.mjs`) renders and safely publishes the reader report from a day JSON the agent assembles.
 
 ## Browser collector
 
@@ -13,6 +13,15 @@ Import from `scripts/zsxq-browser-collector.mjs` in the persistent Chrome-contro
 Collector failures are direct errors carrying a content-free `code` and `phase`. An error from a per-item call — `downloadZsxqTimelineFileOnTab`, `downloadZsxqDetailFileOnTab`, or `collectZsxqDetailOnTab` (including `DETAIL_IMAGE_GALLERY_OVERFLOW_UNSUPPORTED` for an over-limit detail image gallery) — fails only that item: the agent records it as `failed` with a reader note in the day JSON and continues. A failed `collectZsxqTimelineRangeOnTab` stops the run — a range cannot publish with a missing day. Timeline topics with a `+N` image-overflow badge are skipped by decision and returned in `skipped_topics`. A pinned topic that may belong to the target date without a proven stream rendering — or whose pinned timestamp cannot be read — does not stop the run: it is returned in `unproven_sticky_topics` as `{ author, displayed_timestamp, reason }` (`sticky-target-date-unmatched` or `sticky-timestamp-unreadable`), observed as the union of every stabilized snapshot's pinned area.
 
 The single active DOM contract is `ZSXQ_BROWSER_CONTRACT` (`zsxq-web-angular-v12`). A live DOM change is a repair: tell the user the confirmed cause and the smallest intended change, and change the contract only after their explicit approval, bumping the version string.
+
+## Linked-page collector
+
+Import `collectLinkedPageOnTab`, `mergeLinkedFileLinks`, and `sanitizeReportUrl` from `scripts/zsxq-linked-page-collector.mjs` in the persistent Chrome-control session.
+
+- `collectLinkedPageOnTab(tab, { url, timeoutMs?, pollIntervalMs? })` navigates once and returns the first readable main-content snapshot with a Markdown body, direct `file_links`, and image candidates. It does not compare consecutive snapshots, impose a minimum delay, or require `document.readyState === "complete"`. Only blank, loading-only, or access-challenge pages are retried (default observation timeout 10 seconds, polling 250 ms). Failures carry a short `reader_note` and a specific code: `LINKED_PAGE_EMPTY`, `LINKED_PAGE_LOADING`, `LINKED_PAGE_ACCESS_BLOCKED`, `LINKED_PAGE_READ_ERROR`, or `LINKED_PAGE_NAVIGATION_FAILED`. A navigation error can still recover readable content when the target URL is confirmed.
+- Direct PDF, HTML, and Word links are deduplicated in DOM order. Their ordinary public query and fragment stay intact. `sanitizeReportUrl` removes the entire query and fragment only when the URL carries a token, signature, expiry, or another recognized transport-credential key.
+- `mergeLinkedFileLinks(bodyMarkdown, fileLinks)` normalizes existing file-link labels to filenames, sanitizes transport URLs in the body, deduplicates inline file links, and appends each missing filename-bearing link once. These linked-page files are source links only: never download them, parse them, or create PDF/HTML/Word `embedded_media` records for them.
+- Use the clean-webpage result for the main body when available, but still run this collector to read the page's current links and image candidates. Judge whether the snapshot contains the article, not just navigation. Preserve readable content; only actual unread portions warrant the existing `inventory_note` or item failure. Dynamic changes and unfinished background loading alone never make a page incomplete; if neither route produced a body, record the web attachment as `failed`.
 
 ## Day JSON
 
@@ -41,7 +50,7 @@ The agent assembles one JSON object per collected Beijing date and passes it to 
         { "type": "pdf", "filename": "y.pdf", "document_failure": { "status": "failed", "reader_note": "..." } },
         { "type": "html", "filename": "x.html", "body": { } },
         { "type": "word", "filename": "x.docx", "body": { } },
-        { "type": "web", "title": "页面标题", "original_url": "https://...", "author": "可选", "publication_time": "可选", "body": { }, "embedded_media": [ { "type": "image | pdf | html | word", "...": "同上" } ], "inventory_note": "可选：页面内媒体无法完整清点时的读者说明" }
+        { "type": "web", "title": "页面标题", "original_url": "https://...", "author": "可选", "publication_time": "可选", "body": { "status": "present", "payload": "正文及页面内 PDF/HTML/Word 的文件名与源链接" }, "embedded_media": [ { "type": "image", "extraction": { } } ], "inventory_note": "可选：实际无法读取的页面链接或图片的读者说明" }
       ]
     }
   ]
@@ -53,6 +62,7 @@ The agent assembles one JSON object per collected Beijing date and passes it to 
 - `unproven_sticky_topics` is optional (default empty): copy each collector entry and add a single-line `reader_note` saying the pinned topic may be missing; `author` and `displayed_timestamp` may be empty when unreadable.
 - Extraction statuses: `present` requires `payload`; `failed` requires a single-line `reader_note` and may carry `recovered_payload`. Failure text never enters `payload`.
 - A `web` attachment always needs a non-empty single-line `title`; when the page could not be opened, use the topic's visible link text, falling back to the URL itself.
+- In newly collected linked pages, only substantive images use `embedded_media`. Direct PDF, HTML, and Word files stay as filename-bearing Markdown links in the web body's payload and are never downloaded. The runner still accepts the older non-image embedded shapes so an existing transient input can render, but the current collection procedure does not create them.
 - Topics are listed newest first; filter-excluded topics are simply not included and are counted in `excluded_topic_count`.
 
 ## Runner
