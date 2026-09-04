@@ -18,7 +18,7 @@ App target: <not applicable | discover | the user's stated app target, verbatim>
 Chrome instance: <not applicable | extensionInstanceId "<id>">
 
 Rules:
-- Every input you need is above. Do not ask the user for anything and do not wait for a reply. Runtime approval prompts — network access, file writes, downloads, and other tool or sandbox approvals — are not questions: raise them as the skill's procedure requires and continue. When the skill's procedure needs a decision only the user can make — a group or planet that resolves ambiguously, a sign-in, permission, or connection stop, a repair approval — stop at that point, write nothing further, keep your temporary directory and name it in `notes:`, and return status `blocked` with the exact question in `question:`.
+- Every input you need is above. Do not ask the user for anything and do not wait for a reply. Runtime approval prompts — network access, file writes, downloads, and other tool or sandbox approvals — are not questions: raise them as the skill's procedure requires and continue. When the skill's procedure needs a decision only the user can make — a group or planet that resolves ambiguously, a sign-in, permission, or connection stop the skill itself makes, a repair approval — stop at that point, write nothing further, keep your temporary directory and name it in `notes:`, and return status `blocked` with the exact question in `question:`.
 - Follow the skill's procedure, temporary-directory handling, cleanup, and hard rules unchanged. This brief adds no procedure and permits no shortcut; the Chrome-instance selection below is the only step it prescribes.
 - When `Chrome instance` names an `extensionInstanceId`: before the first browser step, list the available browsers, select the entry whose `metadata.extensionInstanceId` equals it exactly, get that browser by the `id` from your own list, name your session, and bind every tab of this task from that browser. A `browserId` is local to each agent's runtime and is never shared or reused across agents. Never select a browser by family, URL, or default, and never touch a tab you did not open. Other tasks may be running in the same Chrome at the same time: keep to your own tabs, and apply the skill's download-association checks before touching any downloaded file, because the Downloads folder is shared. If no connected browser carries that id, or Knowledge Planet is not signed in there, return `blocked` with a question that says so.
 - Do not collect, read, or mention any other channel, group, planet, window, or filter.
@@ -34,7 +34,7 @@ targets: <the Targets line above, verbatim>
 output_path: <absolute path of the written report | none>
 counts: <the counts the skill's report step names, on one line | none>
 question: <the exact question for the user | none>
-notes: <every item the skill's report step requires — skipped topics, unproven pinned topics, incomplete groups, retained temporary path, exact error — verbatim | none>
+notes: <every item the skill's report step requires — skipped topics, unproven pinned topics, unreadable linked pages, incomplete groups, retained temporary path, exact error — verbatim | none>
 ~~~
 
 ## Status meanings

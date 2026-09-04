@@ -74,7 +74,7 @@ Every channel skill belongs to exactly one lane:
 ## 5. Verify and report
 
 - For every `complete` or `incomplete` result, confirm the reported `output_path` exists under `<sources-workspace>/output/`; a missing file turns the task into `failed` with the subagent's own report attached.
-- Present one results table — task, skill, targets, Beijing window, status, counts as reported, clickable absolute output path — then each task's `notes` verbatim: skipped or unproven pinned topics, incomplete groups, retained temporary paths, exact errors. Report an `incomplete` task as incomplete.
+- Present one results table — task, skill, targets, Beijing window, status, counts as reported, clickable absolute output path — then each task's `notes` verbatim: skipped or unproven pinned topics, unreadable linked pages, incomplete groups, retained temporary paths, exact errors. Report an `incomplete` task as incomplete.
 - Do not summarize, merge, or restate the collected content, and do not combine channel reports into one file.
 
 ## Hard rules
