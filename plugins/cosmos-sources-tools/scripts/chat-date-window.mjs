@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-// Shared Beijing calendar-window resolver for dingding-fetch and feishu-fetch.
+// Shared Beijing calendar-window resolver for dingding-fetch and feishu-fetch;
+// sources-orchestrator also runs it to validate every planned window.
 
 import { parseArgs } from "node:util";
 import { MAX_RANGE_DAYS, isMainEntry } from "./workspace-runtime.mjs";

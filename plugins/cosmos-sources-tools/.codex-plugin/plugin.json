@@ -1,7 +1,7 @@
 {
   "name": "cosmos-sources-tools",
-  "version": "0.19.5",
-  "description": "Fetch and locally archive single-day or date-range source content from CLS, Knowledge Planet, DingTalk, and Feishu, with optional semantic filtering.",
+  "version": "0.20.0",
+  "description": "Fetch and locally archive single-day or date-range source content from CLS, Knowledge Planet, DingTalk, and Feishu, with optional semantic filtering, one channel at a time or several channels from one conversation through subagents.",
   "author": {
     "name": "Jason"
   },
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Cosmos Sources Tools",
     "shortDescription": "Archive CLS, Knowledge Planet, DingTalk, and Feishu content by Beijing date.",
-    "longDescription": "Retrieves the complete China Standard Time CLS telegraph feed over the network from cls.cn, archives topics and attachments from one Knowledge Planet by operating the user's already signed-in Chrome session, or reads exact DingTalk and Feishu groups by operating the user's already signed-in desktop sessions. Every skill covers today, one historical Beijing calendar date, or one contiguous Beijing date range of at most 31 days merged into a single report, and applies an optional natural-language semantic filter (the complete unfiltered content by default); the Knowledge Planet skill additionally accepts a user-stated extraction scope, such as excluding content types (images, linked pages, PDF, HTML, Word) or keeping one version of multi-version documents, and the DingTalk and Feishu skills accept one that skips image content. All four skills write source-grounded Markdown under source-specific Beijing-date or range directories in the fixed sources workspace `~/Documents/cosmos-workspace/sources`, which a run creates when missing; a same-identity rerun refreshes its generated file while different identities coexist. Plugin updates replace capability code only and never own user data.",
+    "longDescription": "Retrieves the complete China Standard Time CLS telegraph feed over the network from cls.cn, archives topics and attachments from one Knowledge Planet by operating the user's already signed-in Chrome session, or reads exact DingTalk and Feishu groups by operating the user's already signed-in desktop sessions. Every channel skill covers today, one historical Beijing calendar date, or one contiguous Beijing date range of at most 31 days merged into a single report, and applies an optional natural-language semantic filter (the complete unfiltered content by default); the Knowledge Planet skill additionally accepts a user-stated extraction scope, such as excluding content types (images, linked pages, PDF, HTML, Word) or keeping one version of multi-version documents, and the DingTalk and Feishu skills accept one that skips image content. All four skills write source-grounded Markdown under source-specific Beijing-date or range directories in the fixed sources workspace `~/Documents/cosmos-workspace/sources`, which a run creates when missing; a same-identity rerun refreshes its generated file while different identities coexist. A fifth skill orchestrates several channels from one conversation: it gathers and confirms the targets, Beijing windows, filters, and extraction scopes for each channel, delegates every collection to its own subagent running the matching channel skill, runs the network, browser, and desktop-app lanes concurrently while browser tasks and desktop-app tasks are each serialized within their lane, and returns one consolidated result with every report path. Plugin updates replace capability code only and never own user data.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": [
@@ -19,8 +19,8 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Fetch the CLS telegraph feed for a Beijing date or date range, optionally filtered by topic.",
-      "Archive topics and attachments from a Knowledge Planet for one Beijing date or a date range.",
+      "Collect several channels at once — CLS, a Knowledge Planet, DingTalk or Feishu groups — for a Beijing date or range from one conversation, each collection run by its own subagent.",
+      "Fetch the CLS telegraph feed or archive one Knowledge Planet's topics and attachments for a Beijing date or date range, optionally filtered by topic.",
       "Collect messages from exact DingTalk or Feishu groups for a Beijing date or range into source-faithful Markdown, with an optional filter."
     ]
   }
