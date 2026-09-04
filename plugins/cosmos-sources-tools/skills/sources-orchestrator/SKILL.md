@@ -22,6 +22,8 @@ Talk to the user, build one confirmed plan, run every task through its own subag
 
 - All groups the user names for one chat app form one task and one report, in the order named; split them into several tasks only when the user asks for separate reports.
 - Ask only for a missing or ambiguous required target or window. Never guess a group or planet from a partial name, and never infer a target from earlier unrelated context. Do not ask for a filter, extraction scope, filename, or app target; a task without them collects the complete content to the skill's default path, exactly as the channel skill does. Do not ask the user how to schedule tasks.
+- Knowledge Planet tasks run one at a time unless the user asks in this conversation to run planets in parallel — 并行/并发地抓几个星球; merely naming several planets 一起/同时 is a multi-planet request, not this one. Parallel planets all run in the same signed-in Chrome instance, each subagent in its own browser-control session with its own tabs; no second browser, profile, or sign-in is needed. Never propose parallel planets unasked.
+- For any plan with a `$zsxq-fetch` task, resolve the Chrome instance once before presenting the plan: following the Chrome-control skill, list the available browsers, take the `extension` entry for the user's signed-in Chrome (when several Chrome instances are connected, ask the user which one), and record its `metadata.extensionInstanceId`. This is discovery only — open no tab and navigate nowhere. Never pass a `browserId` to a subagent: it is a local number inside each agent's runtime, so every subagent must find the same Chrome by `extensionInstanceId`.
 - Record filter and extraction wording verbatim; the channel skill, not the orchestrator, derives scope keys and filenames. Two requests with the same skill, targets, window, filter meaning, and extraction scope are one task.
 
 ## 2. Confirm the plan
@@ -33,7 +35,14 @@ Present the plan as one table and start only after the user's explicit confirmat
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | T1 | $cls-fetch | — | 2026-09-04 | 全部内容 | — | default | network |
 | T2 | $zsxq-fetch | 星球「<exact planet name>」 | 2026-09-01 to 2026-09-04 | AI 相关信息 | 不读取图片 | default | browser |
-| T3 | $feishu-fetch | <群 A>、<群 B> | 2026-09-04 | 全部内容 | — | default | desktop 1 |
+| T3 | $feishu-fetch | <群 A>、<群 B> | 2026-09-04 | 全部内容 | — | default | desktop |
+```
+
+When the user asked for parallel planets, the `Lane` cell of every `$zsxq-fetch` task reads `browser (parallel)`:
+
+```markdown
+| T1 | $zsxq-fetch | 星球「<planet A>」 | 2026-09-04 | 全部内容 | — | default | browser (parallel) |
+| T2 | $zsxq-fetch | 星球「<planet B>」 | 2026-09-04 | 全部内容 | — | default | browser (parallel) |
 ```
 
 Tell the user, once, that runtime approval prompts — network access, file writes, downloads — may appear from subagent threads while tasks run and are answered like any other approval.
@@ -45,19 +54,20 @@ Every channel skill belongs to exactly one lane:
 | Lane | Skills | Rule |
 | --- | --- | --- |
 | `network` | `cls-fetch` | Fetches over the network only. Start every network task at once; they run concurrently with each other and with every other lane. |
-| `browser` | `zsxq-fetch` | Operates the user's signed-in Chrome session through the browser-control capability. Run one at a time in plan order, concurrently with the other lanes. |
+| `browser` | `zsxq-fetch` | Operates the user's signed-in Chrome instance, resolved once by `extensionInstanceId` (section 1), through the browser-control capability. Default: run one at a time in plan order, concurrently with the other lanes. Parallel planets (`browser (parallel)`, only on the user's request): start every task at once in that same Chrome instance, each subagent in its own browser-control session, concurrently with every other lane. |
 | `desktop` | `dingding-fetch`, `feishu-fetch` | Operates the user's signed-in DingTalk or Feishu desktop session through Computer Use. Run one at a time in plan order, concurrently with the other lanes; start the next when the current one ends. |
 
-- Lanes run concurrently with each other; within the `browser` and `desktop` lanes tasks are serialized because two tasks driving the same Chrome session, or two desktop apps sharing the screen's keyboard focus and clicks, would disturb each other. Only the user's explicit instruction in this conversation changes the lane rules, and the plan table then shows that decision.
-- A `blocked` browser or desktop task keeps its lane until the user answers: the answer often means the user signing in or operating that same window, which the next task in that lane would disturb. Other lanes keep running meanwhile.
+- Lanes run concurrently with each other; by default tasks within the `browser` lane and within the `desktop` lane are serialized because two tasks driving one Chrome session's tabs, or two desktop apps sharing the screen's keyboard focus and clicks, would disturb each other. Parallel planets are the one predefined exception: each subagent's own browser-control session keeps its tabs apart, while the Chrome profile, its sign-in, and its Downloads folder stay shared. Only the user's explicit instruction in this conversation changes the lane rules, and the plan table then shows that decision.
+- A `blocked` browser or desktop task keeps its lane until the user answers: the answer often means the user signing in or operating that same window, which the next task in that lane would disturb. Other lanes keep running meanwhile; in `browser (parallel)` a blocked planet task holds only itself, and the other planet tasks continue.
 - If the runtime refuses a spawn because of its concurrent-thread limit, start that task when a running one ends.
 
 ## 4. Run each task in a subagent
 
 - Spawn one subagent per task and give it, as its entire instruction, one brief composed from [references/task-brief.md](references/task-brief.md): the skill to run and the absolute path of that skill's `SKILL.md`, every resolved input, the rules, and the result block the subagent must end with. A brief contains only its own task — never another task's targets, filter, window, or content.
-- Subagents inherit this conversation's skills, tools, sandbox, and permission mode; the brief adds no procedure and no shortcut. A subagent's runtime approval prompts reach the user directly and are not `blocked` results.
+- The brief's `Chrome instance` line carries the resolved `extensionInstanceId` for every `$zsxq-fetch` task, serial or parallel, and `not applicable` for the others; a `browserId` never appears in a brief.
+- Subagents inherit this conversation's skills, tools, sandbox, and permission mode; the brief adds no procedure beyond selecting the Chrome instance and no shortcut. A subagent's runtime approval prompts reach the user directly and are not `blocked` results.
 - Wait for every task to end. Whenever a task ends, tell the user its ID, status, and output path in one line, and start the next queued task in that lane if there is one.
-- On `blocked`: relay the subagent's question to the user verbatim, without answering on the user's behalf. When the user answers, resume that subagent with the answer. If it cannot be resumed, spawn a new subagent with the corrected brief and report the retained temporary path the blocked subagent named in `notes`, which no replacement subagent may remove. A repair request from a channel skill — the confirmed cause and the smallest intended change — is relayed the same way, and only the user's explicit approval goes back.
+- On `blocked`: relay the subagent's question to the user verbatim, without answering on the user's behalf. When the user answers, resume that subagent with the answer. If it cannot be resumed, spawn a new subagent with the corrected brief and report the retained temporary path the blocked subagent named in `notes`, which no replacement subagent may remove. A replacement subagent keeps the blocked task's lane. A repair request from a channel skill — the confirmed cause and the smallest intended change — is relayed the same way, and only the user's explicit approval goes back.
 - A `failed` task never stops another task and is never re-run automatically; the user may ask to re-run failed tasks, which is a new plan containing only those tasks.
 - If subagents cannot be spawned at all, stop and tell the user; run tasks in this conversation, one at a time, only on the user's explicit instruction.
 
@@ -71,6 +81,7 @@ Every channel skill belongs to exactly one lane:
 
 - Every collection runs in a subagent under a brief from `references/task-brief.md`; the orchestrator never runs a channel skill inline without the user's explicit instruction.
 - Never answer a subagent's question or approve a repair on the user's behalf.
+- Never pass a `browserId` between agents, and never run planets in parallel without the user's request in this conversation.
 - Never describe an `incomplete` or `failed` task as complete.
 - Never edit installed skill files or deviate from this document's procedure without the user's explicit repair approval.
 

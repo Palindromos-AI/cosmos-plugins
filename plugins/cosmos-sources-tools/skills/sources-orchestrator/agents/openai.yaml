@@ -1,4 +1,4 @@
 interface:
   display_name: "Sources Orchestrator"
-  short_description: "在一个对话里确认多渠道抓取需求，按渠道派发子代理执行财联社、星球、钉钉、飞书抓取（网络任务并行、前台任务串行）并汇总结果"
+  short_description: "在一个对话里确认多渠道抓取计划，派发子代理执行财联社、星球、钉钉、飞书抓取（网络并行、前台串行；星球可按需在同一 Chrome 中并行）并汇总结果"
   default_prompt: "使用 $sources-orchestrator 整理我要抓取的渠道、目标、北京日期和筛选要求，确认计划后派发子代理执行，并汇总每个渠道的结果。"
