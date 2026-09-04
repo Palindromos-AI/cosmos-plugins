@@ -1,6 +1,6 @@
 {
   "name": "cosmos-sources-tools",
-  "version": "0.19.3",
+  "version": "0.19.4",
   "description": "Fetch and locally archive single-day or date-range source content from CLS, Knowledge Planet, DingTalk, and Feishu, with optional semantic filtering.",
   "author": {
     "name": "Jason"
