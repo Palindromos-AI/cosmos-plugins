@@ -6,7 +6,7 @@ import {
 // The single active DOM contract. A live DOM change is repaired here (with the
 // user's approval) by bumping the version string and adjusting the selectors.
 export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
-  version: "zsxq-web-angular-v11",
+  version: "zsxq-web-angular-v12",
   timestampReadCountOptional: true,
   explicitLinkHrefRequired: true,
   ignoreUnsupportedFileCardsOutsideTargetDate: true,
@@ -38,6 +38,7 @@ export const ZSXQ_BROWSER_CONTRACT = Object.freeze({
     fileIcon: ":scope > .file-icon",
     filePdfIndicator: ":scope > .file-icon.file-pdf",
     filePreviewRoot: "app-file-preview .file-preview-container",
+    filePreviewContent: ":scope > .content",
     filePreviewName: ":scope .file > .file-name",
     fileDownloadControl: ":scope .file > .btn-wrapper > .btn.download",
     detailPanel: ".topic-detail-panel",
@@ -1111,103 +1112,208 @@ async function downloadZsxqFileCardOnTab(tab, input) {
     expectedFilename,
     expectedType,
     diagnostic,
+    pageRootSelector,
+    expectedPageUrl,
   } = input;
-  try {
-    await fileCard.click();
-  } catch (error) {
-    if (directBrowserError(error)) throw error;
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "PREVIEW_OPEN_FAILED"),
-      `${expectedType}-download`,
-      "The official Knowledge Planet file preview could not be opened",
-      { ...diagnostic, fileOrdinal },
-      { cause: error },
-    );
-  }
+  const dismissPreview = async ({ required }) => {
+    const preview = tab.playwright.locator(selectors.filePreviewRoot);
+    const previewCount = await preview.count();
+    if (previewCount === 0 && required !== true) return;
+    if (previewCount !== 1) {
+      throw new ZsxqBrowserCollectionError(
+        fileDownloadErrorCode(expectedType, "PREVIEW_DISMISS_FAILED"),
+        `${expectedType}-download`,
+        "The official file preview could not be dismissed without leaving the source page",
+        { previewCount, pageRootCount: await tab.playwright.locator(pageRootSelector).count() },
+      );
+    }
+    const point = await preview.evaluate((element, contentSelector) => {
+      const content = element.querySelector(contentSelector);
+      if (!content) return null;
+      const outer = element.getBoundingClientRect();
+      const inner = content.getBoundingClientRect();
+      const candidates = [
+        {
+          gap: inner.left - outer.left,
+          point: [(outer.left + inner.left) / 2, (inner.top + inner.bottom) / 2],
+        },
+        {
+          gap: outer.right - inner.right,
+          point: [(inner.right + outer.right) / 2, (inner.top + inner.bottom) / 2],
+        },
+        {
+          gap: inner.top - outer.top,
+          point: [(inner.left + inner.right) / 2, (outer.top + inner.top) / 2],
+        },
+        {
+          gap: outer.bottom - inner.bottom,
+          point: [(inner.left + inner.right) / 2, (inner.bottom + outer.bottom) / 2],
+        },
+      ].filter(({ gap }) => Number.isFinite(gap) && gap >= 2)
+        .sort((left, right) => right.gap - left.gap);
+      if (candidates.length === 0) return null;
+      return candidates[0].point.map((value) => Math.max(1, Math.floor(value)));
+    }, selectors.filePreviewContent);
+    if (!Array.isArray(point) || point.length !== 2) {
+      throw new ZsxqBrowserCollectionError(
+        fileDownloadErrorCode(expectedType, "PREVIEW_DISMISS_FAILED"),
+        `${expectedType}-download`,
+        "The official file preview could not be dismissed without leaving the source page",
+        { previewCount, dismissPointAvailable: false },
+      );
+    }
+    try {
+      await tab.click(point);
+    } catch (error) {
+      if (directBrowserError(error)) throw error;
+      throw new ZsxqBrowserCollectionError(
+        fileDownloadErrorCode(expectedType, "PREVIEW_DISMISS_FAILED"),
+        `${expectedType}-download`,
+        "The official file preview could not be dismissed without leaving the source page",
+        { previewCount, dismissPointAvailable: true },
+        { cause: error },
+      );
+    }
+    const timeoutMs = input.timeoutMs ?? 8_000;
+    const pollIntervalMs = input.pollIntervalMs ?? 150;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() <= deadline) {
+      if (await preview.count() === 0) break;
+      await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())));
+    }
+    const currentUrl = await tab.url();
+    const pageRootCount = await tab.playwright.locator(pageRootSelector).count();
+    if (
+      await preview.count() !== 0
+      || currentUrl !== expectedPageUrl
+      || pageRootCount !== 1
+    ) {
+      throw new ZsxqBrowserCollectionError(
+        fileDownloadErrorCode(expectedType, "PREVIEW_DISMISS_FAILED"),
+        `${expectedType}-download`,
+        "The official file preview could not be dismissed without leaving the source page",
+        {
+          previewDismissed: await preview.count() === 0,
+          pageUrlMatched: currentUrl === expectedPageUrl,
+          pageRootCount,
+        },
+      );
+    }
+  };
 
-  const timeoutMs = input.timeoutMs ?? 8_000;
-  const pollIntervalMs = input.pollIntervalMs ?? 150;
-  const deadline = Date.now() + timeoutMs;
-  let preview;
-  let previewName;
-  let downloadControl;
-  while (Date.now() <= deadline) {
-    preview = tab.playwright.locator(selectors.filePreviewRoot);
-    if (await preview.count() === 1) {
-      const names = preview.locator(selectors.filePreviewName);
-      const controls = preview.locator(selectors.fileDownloadControl);
-      if (await names.count() === 1 && await controls.count() === 1) {
-        previewName = (await names.innerText()).trim();
-        downloadControl = controls;
-        break;
+  await dismissPreview({ required: false });
+  let operationError;
+  let result;
+  try {
+    try {
+      await fileCard.click();
+    } catch (error) {
+      if (directBrowserError(error)) throw error;
+      operationError = new ZsxqBrowserCollectionError(
+        fileDownloadErrorCode(expectedType, "PREVIEW_OPEN_FAILED"),
+        `${expectedType}-download`,
+        "The official Knowledge Planet file preview could not be opened",
+        { ...diagnostic, fileOrdinal },
+        { cause: error },
+      );
+    }
+
+    if (!operationError) {
+      const timeoutMs = input.timeoutMs ?? 8_000;
+      const pollIntervalMs = input.pollIntervalMs ?? 150;
+      const deadline = Date.now() + timeoutMs;
+      let preview;
+      let previewName;
+      let downloadControl;
+      while (Date.now() <= deadline) {
+        preview = tab.playwright.locator(selectors.filePreviewRoot);
+        if (await preview.count() === 1) {
+          const names = preview.locator(selectors.filePreviewName);
+          const controls = preview.locator(selectors.fileDownloadControl);
+          if (await names.count() === 1 && await controls.count() === 1) {
+            previewName = (await names.innerText()).trim();
+            downloadControl = controls;
+            break;
+          }
+        }
+        await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())));
+      }
+      if (!downloadControl || previewName !== expectedFilename) {
+        operationError = new ZsxqBrowserCollectionError(
+          fileDownloadErrorCode(expectedType, "DOWNLOAD_CONTROL_MISMATCH"),
+          `${expectedType}-download`,
+          "The official file preview did not expose one matching download control",
+          {
+            ...diagnostic,
+            fileOrdinal,
+            filenameMatched: previewName === expectedFilename,
+          },
+        );
+      } else {
+        const controlText = (await downloadControl.innerText()).trim();
+        const controlVisible = typeof downloadControl.isVisible === "function"
+          ? await downloadControl.isVisible()
+          : false;
+        if (controlText !== "下载文件" || controlVisible !== true) {
+          operationError = new ZsxqBrowserCollectionError(
+            fileDownloadErrorCode(expectedType, "DOWNLOAD_CONTROL_MISMATCH"),
+            `${expectedType}-download`,
+            "The official file preview download control is not exact and visible",
+            {
+              ...diagnostic,
+              fileOrdinal,
+              downloadControlTextMatched: controlText === "下载文件",
+              downloadControlVisible: controlVisible,
+            },
+          );
+        } else {
+          try {
+            // Playwright's standard option name is `timeout`; an unknown option name
+            // is silently ignored and would fall back to the 30s default. Pass both
+            // names so a tab adapter using this collector's own `timeoutMs` spelling
+            // is honored as well; the extra key is harmless either way.
+            const downloadPromise = tab.playwright.waitForEvent("download", {
+              timeout: timeoutMs,
+              timeoutMs,
+            });
+            const [download] = await Promise.all([downloadPromise, downloadControl.click()]);
+            result = {
+              download,
+              type: expectedType,
+              filename: expectedFilename,
+              acquisition: "official-ui-download",
+              contract_version: ZSXQ_BROWSER_CONTRACT.version,
+            };
+          } catch (error) {
+            if (directBrowserError(error)) throw error;
+            operationError = new ZsxqBrowserCollectionError(
+              fileDownloadErrorCode(expectedType, "DOWNLOAD_FAILED"),
+              `${expectedType}-download`,
+              `The official Knowledge Planet ${expectedType.toUpperCase()} download did not complete`,
+              { ...diagnostic, fileOrdinal },
+              { cause: error },
+            );
+          }
+        }
       }
     }
-    await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())));
-  }
-  if (!downloadControl || previewName !== expectedFilename) {
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "DOWNLOAD_CONTROL_MISMATCH"),
-      `${expectedType}-download`,
-      "The official file preview did not expose one matching download control",
-      {
-        ...diagnostic,
-        fileOrdinal,
-        filenameMatched: previewName === expectedFilename,
-      },
-    );
-  }
-  const controlText = (await downloadControl.innerText()).trim();
-  const controlVisible = typeof downloadControl.isVisible === "function"
-    ? await downloadControl.isVisible()
-    : false;
-  if (controlText !== "下载文件" || controlVisible !== true) {
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "DOWNLOAD_CONTROL_MISMATCH"),
-      `${expectedType}-download`,
-      "The official file preview download control is not exact and visible",
-      {
-        ...diagnostic,
-        fileOrdinal,
-        downloadControlTextMatched: controlText === "下载文件",
-        downloadControlVisible: controlVisible,
-      },
-    );
+  } finally {
+    await dismissPreview({ required: false });
   }
 
-  try {
-    // Playwright's standard option name is `timeout`; an unknown option name
-    // is silently ignored and would fall back to the 30s default. Pass both
-    // names so a tab adapter using this collector's own `timeoutMs` spelling
-    // is honored as well; the extra key is harmless either way.
-    const downloadPromise = tab.playwright.waitForEvent("download", {
-      timeout: timeoutMs,
-      timeoutMs,
-    });
-    const [download] = await Promise.all([downloadPromise, downloadControl.click()]);
-    return {
-      download,
-      type: expectedType,
-      filename: expectedFilename,
-      acquisition: "official-ui-download",
-      contract_version: ZSXQ_BROWSER_CONTRACT.version,
-    };
-  } catch (error) {
-    if (directBrowserError(error)) throw error;
-    throw new ZsxqBrowserCollectionError(
-      fileDownloadErrorCode(expectedType, "DOWNLOAD_FAILED"),
-      `${expectedType}-download`,
-      `The official Knowledge Planet ${expectedType.toUpperCase()} download did not complete`,
-      { ...diagnostic, fileOrdinal },
-      { cause: error },
-    );
-  }
+  if (operationError) throw operationError;
+  return result;
 }
 
 /** Download one inventoried timeline PDF, HTML, or Word file through the official member UI. */
 export async function downloadZsxqTimelineFileOnTab(tab, input) {
   assertTab(tab);
-  if (typeof tab.playwright.waitForEvent !== "function") {
-    throw new TypeError("The browser tab must support download events");
+  if (
+    typeof tab.playwright.waitForEvent !== "function"
+    || typeof tab.click !== "function"
+    || typeof tab.url !== "function"
+  ) {
+    throw new TypeError("The browser tab must support download events, coordinate clicks, and URL reads");
   }
   const {
     fileOrdinal,
@@ -1226,6 +1332,8 @@ export async function downloadZsxqTimelineFileOnTab(tab, input) {
     expectedFilename,
     expectedType,
     diagnostic,
+    pageRootSelector: ZSXQ_BROWSER_CONTRACT.selectors.timelineRoot,
+    expectedPageUrl: await tab.url(),
     timeoutMs: input.timeoutMs,
     pollIntervalMs: input.pollIntervalMs,
   });
@@ -1234,8 +1342,11 @@ export async function downloadZsxqTimelineFileOnTab(tab, input) {
 /** Download one inventoried detail-page PDF, HTML, or Word file through the official member UI. */
 export async function downloadZsxqDetailFileOnTab(tab, input) {
   assertTab(tab);
-  if (typeof tab.playwright.waitForEvent !== "function") {
-    throw new TypeError("The browser tab must support download events");
+  if (
+    typeof tab.playwright.waitForEvent !== "function"
+    || typeof tab.click !== "function"
+  ) {
+    throw new TypeError("The browser tab must support download events, coordinate clicks, and URL reads");
   }
   if (typeof tab.url !== "function") {
     throw new TypeError("The browser tab must expose its current URL");
@@ -1271,6 +1382,8 @@ export async function downloadZsxqDetailFileOnTab(tab, input) {
     expectedFilename,
     expectedType,
     diagnostic: { ...diagnostic, expectedTopicId },
+    pageRootSelector: ZSXQ_BROWSER_CONTRACT.selectors.detailPanel,
+    expectedPageUrl: await tab.url(),
     timeoutMs: input.timeoutMs,
     pollIntervalMs: input.pollIntervalMs,
   });
