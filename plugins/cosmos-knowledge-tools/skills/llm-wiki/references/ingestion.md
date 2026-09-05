@@ -4,14 +4,16 @@
 
 1. Input gate
 2. Extraction scope and batching
-3. Structured analysis contract
-4. Classification rules
-5. Evidence rules
-6. Identity resolution
-7. Page creation and merging
-8. Related-page and contradiction handling
-9. Conversation ingestion
-10. Finalization and failure behavior
+3. Images in sources
+4. Structured analysis contract
+5. Classification rules
+6. Evidence rules
+7. Identity resolution
+8. Review checkpoint
+9. Page creation and merging
+10. Related-page and contradiction handling
+11. Conversation ingestion
+12. Finalization and failure behavior
 
 ## Input gate
 
@@ -26,6 +28,8 @@ Accept Markdown source notes only. Reject:
 - a second source with the same content hash in the current batch.
 
 Do not equate identical filenames with identical sources. Source-page slugs include a path fingerprint so same-named notes in different folders remain distinct.
+
+Raw sources are immutable. Ingestion reads a note and writes wiki pages; it never edits, moves, renames, or reformats the note itself, not even to fix frontmatter or normalize links. If a note needs changing, tell the user.
 
 If the user explicitly requests re-ingestion, compare the old source page's `contentHash` to the new hash. When changed, update the existing source page and merge only the delta into knowledge pages. When unchanged, report a no-op rather than making model-driven rewrites.
 
@@ -47,6 +51,10 @@ For long sources:
 4. In later batches, extract only entities/concepts and carry an exact list of already extracted canonical names and aliases.
 5. Merge batch results by semantic identity. Merge quote/provenance arrays rather than duplicating items.
 6. Stop when a batch produces no new items or only repeats; do not keep prompting to fill a quota.
+
+## Images in sources
+
+A Markdown note cannot be read with its inline images in one pass. Read the text first, then view each embedded local image that carries information — figures, tables, charts, screenshots of text — one at a time, and treat what it shows as source content on the same footing as the text. Decorative images and remote image URLs are not read; list any informative image you could not view under the source page's `来源` section so the gap is visible. Quotations still come from the text only: an image is evidence for a summary or a claim, never the origin of a verbatim mention.
 
 ## Structured analysis contract
 
@@ -162,6 +170,10 @@ Canonicalization policy:
 - For a new item, use the source-language name and slug rules from `schema.md`.
 - Generate one to three genuine aliases. Before leaving aliases empty, check the source title, source frontmatter aliases, expansions and abbreviations stated in the source, and established field usage. For example, `Sparse Mixture of Experts` may use the established `Sparse MoE`; a generic invented translation is not acceptable. Do not invent translations for established technical terms. If no distinct alias is supported after this check, retaining an empty alias list is preferable to a false alias; lint may mark it for review.
 
+## Review checkpoint
+
+The user may want to stay involved — read the takeaways, steer what to emphasize, catch a wrong identity match — before anything is written. When the user asks to review before writing, stop once identity resolution is complete and present: the source title and summary, the key takeaways, the planned write set (pages to create, pages to update with the merge outcome for each), collisions, and contradictions. Continue only after confirmation, applying any redirection the user gives. When the user has not asked for a review, and for every batch ingest, do not pause; write the pages and report the same information at the end.
+
 ## Page creation and merging
 
 ### Source page
@@ -218,7 +230,7 @@ For contradictions:
 
 ## Conversation ingestion
 
-Ingest a conversation only when the user explicitly asks to save it and it contains reusable knowledge rather than casual chat.
+Ingest a conversation only when the user explicitly asks to save it and it contains reusable knowledge rather than casual chat. This path is for conversations that introduced knowledge the wiki does not yet hold. A conversation whose value is the answer itself — a comparison, an analysis, a synthesis of existing pages — is filed as an analysis page under `analyses/` following `query.md`, not as a transcript source.
 
 1. Format turns with role and timestamp.
 2. Compare topics against the index and classify the conversation as `fully_redundant`, `partially_new`, or `entirely_new`.
@@ -236,7 +248,7 @@ After each source:
 2. Run deterministic lint.
 3. Repair only issues caused by the current operation.
 4. Rebuild the index.
-5. Append the log entry.
+5. Append the log entry with `wiki_ops.py log --operation ingest --title "<source title>"`, one `--line` each for the source path, the model surface (`Codex`), created pages, updated pages, failures, collisions, and contradictions. The command writes the fixed `## [YYYY-MM-DD] ingest | <title>` heading; never hand-write log headings.
 
 Track partial failures per item. One failed entity must not discard successfully created pages. Retry a failed semantic item once only when the failure is transient or the proposed edit is unchanged. Never repeat a failed write blindly.
 

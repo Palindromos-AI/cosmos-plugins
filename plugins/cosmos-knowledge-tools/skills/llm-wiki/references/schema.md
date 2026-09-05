@@ -6,9 +6,10 @@
 2. Naming and link rules
 3. Frontmatter contracts
 4. Body templates
-5. Mentions and provenance
-6. Merge invariants
-7. Default schema file
+5. Log format
+6. Mentions and provenance
+7. Merge invariants
+8. Default schema file
 
 ## Managed layout
 
@@ -19,13 +20,16 @@ wiki/
 ├── entities/
 ├── concepts/
 ├── sources/
+├── analyses/
 ├── schema/config.md
 ├── contradictions/
 ├── index.md
 └── log.md
 ```
 
-Treat only `entities`, `concepts`, and `sources` as content nodes in retrieval and most lint graph operations. Treat schema, contradictions, index, log, and welcome notes as support files.
+Treat `entities`, `concepts`, `sources`, and `analyses` as content nodes in retrieval and most lint graph operations. Treat schema, contradictions, index, log, and welcome notes as support files.
+
+Raw source notes live outside the wiki folder and are never modified by any wiki operation. Analysis pages are the one content type that is not derived from a raw note: they are answers, comparisons, overviews, syntheses, or timelines filed back from queries, and they cite wiki pages rather than raw notes.
 
 ## Naming and link rules
 
@@ -33,6 +37,7 @@ Treat only `entities`, `concepts`, and `sources` as content nodes in retrieval a
 - Produce filenames by trimming, removing control characters and `/\\:*?"<>|,()'!?、，。；：！？（）【】《》`, converting whitespace and periods to `-`, collapsing repeated `-`, trimming edge `-`, and lowercasing by default.
 - Use `untitled` only when no usable characters remain, and flag the result for human review.
 - Resolve a source page slug as `<source-basename-slug>_<fingerprint>`, capped at 80 characters. The fingerprint is the first six hexadecimal characters of unsigned FNV-1a over the complete vault-relative source path.
+- Resolve an analysis page slug from a short semantic title of the question it answers, using the filename rules above. Before creating one, check `analyses/` for an existing page on the same question and update that page instead.
 - Use full vault paths in internal links: `[[wiki/entities/page-slug|Display Name]]`.
 - Never put a folder prefix in the display part after `|`.
 - Add only links that are semantically meaningful. A generated dead link is an explicit unresolved stub candidate, not permission to invent content.
@@ -101,6 +106,26 @@ generation_complete: true
 Allowed source tags: `paper`, `article`, `book`, `transcript`, `clippings`, `notes`, `other`. Prefer a compatible tag inherited from the source note. Do not use extracted concept names as source tags.
 
 Compute `contentHash` from the original note body after removing frontmatter: trim it, collapse every whitespace run to one ASCII space, then return `<normalized-length-in-hex>-<8-digit-unsigned-FNV1a-hex>`.
+
+### Analysis
+
+```yaml
+---
+type: analysis
+question: Which attention variants does the wiki compare, and how do they differ?
+created: 2026-07-15
+updated: 2026-07-15
+sources:
+  - "[[wiki/concepts/attention|Attention]]"
+  - "[[wiki/sources/source-slug|Source title]]"
+tags:
+  - comparison
+reviewed: false
+generation_complete: true
+---
+```
+
+Allowed analysis tags: `comparison`, `analysis`, `overview`, `synthesis`, `timeline`, `other`. `sources` lists every wiki page the analysis actually read; it may name entity, concept, source, or other analysis pages, never a raw note. Aliases are optional.
 
 ### Contradiction record
 
@@ -185,6 +210,7 @@ Use Chinese section labels for this vault unless the active schema explicitly ov
 
 - 原始文件：[[folder/original-note|Original note]]
 - 摄取日期：2026-07-15
+- 未读取的图片：（无，或列出无法查看的图片）
 
 ## 核心内容
 
@@ -203,9 +229,48 @@ Use Chinese section labels for this vault unless the active schema explicitly ov
 - 有来源支持的要点
 ```
 
+### Analysis body
+
+```markdown
+# Short semantic title
+
+## 问题
+
+一句话写明本页回答的问题或比较的对象。
+
+## 结论
+
+直接给出结论；比较类分析用表格，时间线类分析按日期列出。
+
+## 分析
+
+支撑结论的推理，每个 wiki 事实旁放行内全路径链接；wiki 中不存在的信息要明确标注。
+
+## 依据
+
+- [[wiki/concepts/example|Example]] — 本页从该页面取用了什么
+```
+
+`问题`, `结论`, and `依据` are required; `分析` may be omitted when the conclusion table already carries the reasoning.
+
 ### Index
 
-Keep `wiki/index.md` deterministic. List entities, concepts, and sources in separate sections. Include aliases and the first useful descriptive paragraph for entities/concepts. Never use a model to invent index summaries.
+Keep `wiki/index.md` deterministic. List entities, concepts, sources, and analyses in separate sections. Every entry carries the page link, its aliases, and a one-line summary — the first useful descriptive paragraph, shortened to 200 characters — so the index can be read first to find candidate pages. Never use a model to invent index summaries.
+
+## Log format
+
+`wiki/log.md` is append-only and chronological. Every entry starts with a heading in this exact shape, followed by optional bullets:
+
+```markdown
+## [2026-07-15] ingest | Attention Is All You Need
+
+- source: notes/attention.md
+- model surface: Codex
+- created: wiki/sources/attention_1a2b3c, wiki/concepts/attention
+- updated: wiki/entities/google
+```
+
+Operations: `init`, `ingest`, `query`, `lint`, `repair`, `merge`, `index`, `other`. Write entries with `wiki_ops.py log`, which appends the heading with today's date and creates the file on first use. The fixed prefix keeps the log parseable — `grep "^## \[" wiki/log.md | tail -5` lists the last five operations — and lint reports any `##` heading that departs from it. Never rewrite or reorder earlier entries.
 
 ## Mentions and provenance
 
@@ -230,18 +295,23 @@ Keep `wiki/index.md` deterministic. List entities, concepts, and sources in sepa
   - `complementary`: append specific new facts to existing matching sections.
   - `merge`: integrate overlapping information while preserving structure and nonduplicate facts.
   - `contradictory`: retain both claims with attribution and open a contradiction record.
+- Analysis pages are revised, not merged: a new answer to the same question re-reads the existing page, rewrites `结论`, `分析`, and `依据` from the current evidence, unions `sources`, and sets `updated`. A different question gets its own page.
 
 ## Default schema file
 
-When `wiki/schema/config.md` is absent, create it with frontmatter `version: 1`, today's `updated` date, and `auto_suggestion_count: 0`. Its body must declare:
+When `wiki/schema/config.md` is absent, create it with frontmatter `version: 2`, today's `updated` date, and `auto_suggestion_count: 0`. Its body must declare:
 
-- managed folders and index/log locations;
+- the three layers — immutable raw sources, model-owned wiki, user-editable schema;
+- managed folders, including `analyses/`, and the index/log locations;
 - the page templates and allowed tags above;
+- the log entry format and operation vocabulary;
 - canonical names remain in the source language;
 - source tags are inherited rather than LLM-derived;
 - dates are set deterministically;
 - multi-source merge invariants;
-- stale threshold of 90 days;
-- orphan, missing-page, and contradiction definitions.
+- stale threshold of 90 days and the stale-analysis definition;
+- orphan, missing-page, page-candidate, and contradiction definitions.
+
+A `version: 1` schema predates analysis pages and the log format. Treat both as active defaults and propose the schema update — as a diff, confirmed by the user — at the next write operation.
 
 Treat the schema as user-editable policy. Never rewrite an existing schema wholesale merely to accommodate one source. Propose a diff and require confirmation for vocabulary or template changes.

@@ -29,7 +29,15 @@ from typing import Any, Iterable
 ENTITY_TAGS = {"person", "organization", "project", "product", "event", "place", "other"}
 CONCEPT_TAGS = {"theory", "method", "field", "phenomenon", "standard", "term", "other"}
 SOURCE_TAGS = {"paper", "article", "book", "transcript", "clippings", "notes", "other"}
-CONTENT_DIRS = ("entities", "concepts", "sources")
+ANALYSIS_TAGS = {"comparison", "analysis", "overview", "synthesis", "timeline", "other"}
+TAGS_BY_TYPE = {"entity": ENTITY_TAGS, "concept": CONCEPT_TAGS, "source": SOURCE_TAGS, "analysis": ANALYSIS_TAGS}
+PAGE_TYPE_BY_DIR = {"entities": "entity", "concepts": "concept", "sources": "source", "analyses": "analysis"}
+CONTENT_DIRS = tuple(PAGE_TYPE_BY_DIR)
+# Every log entry starts with this heading so the log stays greppable:
+# `grep "^## \[" wiki/log.md | tail -5` lists the last five operations.
+LOG_OPERATIONS = ("init", "ingest", "query", "lint", "repair", "merge", "index", "other")
+LOG_HEADING_RE = re.compile(r"^## \[\d{4}-\d{2}-\d{2}\] (?:" + "|".join(LOG_OPERATIONS) + r") \| \S.*$")
+INDEX_SUMMARY_LIMIT = 200
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]")
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
@@ -296,13 +304,17 @@ def first_summary(body: str, page_type: str) -> str:
         "entity": ("描述", "description", "basic information"),
         "concept": ("定义", "definition", "description"),
         "source": ("核心内容", "summary", "core content"),
+        "analysis": ("结论", "conclusion", "summary", "问题", "question"),
     }.get(page_type, ())
     sections = split_sections(body)
-    for heading, text in sections:
-        if normalize_text(heading) in {normalize_text(x) for x in preferred}:
-            paragraph = first_paragraph(text)
-            if paragraph:
-                return strip_link_markup(paragraph)[:500]
+    # Preferred headings are tried in priority order, not body order: an
+    # analysis whose conclusion is a table falls back to its question.
+    for wanted in preferred:
+        for heading, text in sections:
+            if normalize_text(heading) == normalize_text(wanted):
+                paragraph = first_paragraph(text)
+                if paragraph:
+                    return strip_link_markup(paragraph)[:500]
     for _, text in sections:
         paragraph = first_paragraph(text)
         if paragraph:
@@ -325,7 +337,9 @@ def first_paragraph(text: str) -> str:
     chunks = re.split(r"\n\s*\n", text.strip())
     for chunk in chunks:
         lines = [line.strip() for line in chunk.splitlines() if line.strip()]
-        prose = [line for line in lines if not line.startswith(("#", "-", "*", ">", "```"))]
+        # Headings, list items, quotes, fences, and table rows are structure,
+        # not the descriptive sentence an index or ranking summary needs.
+        prose = [line for line in lines if not line.startswith(("#", "-", "*", ">", "```", "|"))]
         if prose:
             return normalize_ws(" ".join(prose))
     return ""
@@ -339,7 +353,7 @@ def load_pages(
     pages: list[Page] = []
     wiki_root = root / wiki_folder
     for directory in CONTENT_DIRS:
-        page_type = {"entities": "entity", "concepts": "concept", "sources": "source"}[directory]
+        page_type = PAGE_TYPE_BY_DIR[directory]
         folder = wiki_root / directory
         if not folder.exists():
             continue
@@ -406,20 +420,28 @@ def extract_link_target(value: Any) -> str | None:
 
 def default_schema(today: str) -> str:
     return f'''---
-version: 1
+version: 2
 updated: {today}
 auto_suggestion_count: 0
 ---
 
 # Wiki Schema Configuration
 
+## Layers
+
+- Raw sources: the user's own notes outside the wiki folder. Read-only; the wiki never edits, moves, or reformats them.
+- Wiki: every page under the wiki folder. Generated and maintained by the model; the user reads it in Obsidian.
+- Schema: this file. User-editable policy; propose a diff and confirm before changing vocabulary or templates.
+
 ## Wiki Structure
 
 - Entity pages: `entities/` (person, organization, project, product, event, place, other)
 - Concept pages: `concepts/` (theory, method, field, phenomenon, standard, term, other)
 - Source pages: `sources/` (paper, article, book, transcript, clippings, notes, other)
-- Index: `index.md`
-- Log: `log.md`
+- Analysis pages: `analyses/` (comparison, analysis, overview, synthesis, timeline, other) — answers, comparisons, and syntheses filed back from queries; they cite wiki pages, never raw notes directly.
+- Contradiction records: `contradictions/`
+- Index: `index.md` (deterministic catalog, regenerated after every write operation)
+- Log: `log.md` (append-only; every entry heading is `## [YYYY-MM-DD] <operation> | <title>` with operation in init, ingest, query, lint, repair, merge, index, other)
 
 ## Entity Page Template
 
@@ -433,6 +455,10 @@ Use frontmatter `type: concept`, deterministic dates, source links, controlled t
 
 Use frontmatter `type: source`, exact `source_file`, deterministic `contentHash`, inherited controlled tags, aliases, and dates. Use sections 来源、核心内容、关键实体、关键概念、主要观点。
 
+## Analysis Page Template
+
+Use frontmatter `type: analysis`, the answered `question`, `sources` listing every wiki page the analysis draws on, controlled tags, and dates. Use sections 问题、结论、依据, plus 分析 unless the conclusion already carries the reasoning.
+
 ## Naming Conventions
 
 - Keep entity and concept names in the source language; never translate canonical names.
@@ -444,6 +470,7 @@ Use frontmatter `type: source`, exact `source_file`, deterministic `contentHash`
 - Entity tags: person, organization, project, product, event, place, other.
 - Concept tags: theory, method, field, phenomenon, standard, term, other.
 - Source tags: paper, article, book, transcript, clippings, notes, other.
+- Analysis tags: comparison, analysis, overview, synthesis, timeline, other.
 
 ## Multi-Source Merge Rules
 
@@ -455,8 +482,9 @@ Use frontmatter `type: source`, exact `source_file`, deterministic `contentHash`
 ## Maintenance Policies
 
 - Stale threshold: 90 days without updates.
-- Orphan: a content page with no inbound content-page link.
-- Missing page: a wikilink target that does not resolve.
+- Stale analysis: an analysis page updated before a page it cites.
+- Orphan: an entity, concept, or source page with no inbound content-page link.
+- Missing page: a wikilink target that does not resolve; one referenced from two or more pages is a page candidate.
 - Never fabricate quotes, sources, stub content, or conflict resolutions.
 '''
 
@@ -914,6 +942,8 @@ def required_sections(page_type: str) -> list[set[str]]:
         return [{"描述", "description"}, {"相关实体", "related entities"}, {"相关概念", "related concepts"}, {"来源中的提及", "mentions in source"}]
     if page_type == "concept":
         return [{"定义", "definition", "description"}, {"关键特征", "key characteristics"}, {"应用", "applications"}, {"相关概念", "related concepts"}, {"相关实体", "related entities"}, {"来源中的提及", "mentions in source"}]
+    if page_type == "analysis":
+        return [{"问题", "question"}, {"结论", "conclusion"}, {"依据", "evidence", "references"}]
     return [{"来源", "source"}, {"核心内容", "core content", "summary"}, {"关键实体", "key entities"}, {"关键概念", "key concepts"}, {"主要观点", "main points"}]
 
 
@@ -948,6 +978,16 @@ def extract_mentions(body: str) -> list[tuple[str, str | None]]:
     return results
 
 
+def page_date(page: Page) -> date | None:
+    value = page.frontmatter.get("updated")
+    if not isinstance(value, str) or not DATE_RE.match(value):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def cmd_lint(args: argparse.Namespace) -> None:
     root = safe_root(args.vault)
     unreadable: list[dict[str, str]] = []
@@ -966,6 +1006,8 @@ def cmd_lint(args: argparse.Namespace) -> None:
     hashes: dict[str, list[str]] = defaultdict(list)
     alias_owners: dict[str, list[str]] = defaultdict(list)
     body_digests: dict[str, list[str]] = defaultdict(list)
+    dead_targets: dict[str, set[str]] = defaultdict(set)
+    by_path = {page.rel_no_ext: page for page in pages}
     source_by_path = {page.rel_no_ext: page for page in pages if page.page_type == "source"}
 
     if pages:
@@ -975,6 +1017,10 @@ def cmd_lint(args: argparse.Namespace) -> None:
             add_issue(issues, "warning", "missing-schema", schema_path.relative_to(root).as_posix(), "Wiki has content pages but no active schema")
         if not log_path.is_file():
             add_issue(issues, "info", "missing-log", log_path.relative_to(root).as_posix(), "Wiki has content pages but no operation log")
+        else:
+            for line in read_text(log_path).splitlines():
+                if line.startswith("## ") and not LOG_HEADING_RE.match(line):
+                    add_issue(issues, "info", "malformed-log-entry", log_path.relative_to(root).as_posix(), f"Heading is not `## [YYYY-MM-DD] <operation> | <title>`: {line}")
 
     for page in pages:
         fm = page.frontmatter
@@ -993,14 +1039,14 @@ def cmd_lint(args: argparse.Namespace) -> None:
             add_issue(issues, "error", "incomplete-generation", page.rel_file, "generation_complete is missing or not true")
 
         tags = set(as_list(fm.get("tags")))
-        valid_tags = ENTITY_TAGS if page.page_type == "entity" else CONCEPT_TAGS if page.page_type == "concept" else SOURCE_TAGS
+        valid_tags = TAGS_BY_TYPE[page.page_type]
         invalid = sorted(tags - valid_tags)
         if invalid:
             add_issue(issues, "warning", "invalid-tag", page.rel_file, f"Invalid controlled tags: {', '.join(invalid)}")
         if not tags:
             add_issue(issues, "warning", "missing-tag", page.rel_file, "Managed page has no controlled tag")
 
-        if page.page_type in {"entity", "concept"}:
+        if page.page_type in {"entity", "concept", "analysis"}:
             sources = as_list(fm.get("sources"))
             if not sources:
                 add_issue(issues, "error", "missing-source-citation", page.rel_file, "Knowledge page has no sources")
@@ -1008,8 +1054,24 @@ def cmd_lint(args: argparse.Namespace) -> None:
                 target = extract_link_target(source_value)
                 if not target or not link_exists(target, exact_targets, normalized_targets):
                     add_issue(issues, "error", "missing-source-page", page.rel_file, f"Source citation does not resolve: {source_value}")
-            if not page.aliases:
-                add_issue(issues, "info", "missing-alias", page.rel_file, "Entity/concept page has no non-empty alias")
+        if page.page_type in {"entity", "concept"} and not page.aliases:
+            add_issue(issues, "info", "missing-alias", page.rel_file, "Entity/concept page has no non-empty alias")
+        if page.page_type == "analysis":
+            # An analysis synthesizes other pages; once one of them moves on,
+            # the synthesis may state something the wiki no longer supports.
+            own_date = page_date(page)
+            cited_pages = [
+                by_path.get(resolve_content_target(target, exact_pages, fuzzy_pages, args.wiki_folder) or "")
+                for target in (extract_link_target(value) for value in as_list(fm.get("sources")))
+                if target
+            ]
+            newer = sorted({
+                cited.rel_file
+                for cited in cited_pages
+                if cited is not None and own_date is not None and (page_date(cited) or own_date) > own_date
+            })
+            if newer:
+                add_issue(issues, "info", "stale-analysis", page.rel_file, f"Cited pages updated after this analysis: {', '.join(newer)}")
 
         headings = {normalize_text(heading) for heading, _ in split_sections(page.body) if heading}
         for alternatives in required_sections(page.page_type):
@@ -1059,13 +1121,20 @@ def cmd_lint(args: argparse.Namespace) -> None:
             skip_dead_link = is_embed or target_suffix in ATTACHMENT_SUFFIXES
             if not skip_dead_link and not link_exists(target.strip(), exact_targets, normalized_targets):
                 add_issue(issues, "warning", "dead-link", page.rel_file, f"Unresolved target: {target.strip()}")
-            if re.search(r"(?:entities|concepts|sources)/(?:entities|concepts|sources)/", target):
+                dead_targets[target.strip().removesuffix(".md")].add(page.rel_file)
+            if re.search(r"(?:entities|concepts|sources|analyses)/(?:entities|concepts|sources|analyses)/", target):
                 add_issue(issues, "warning", "polluted-link", page.rel_file, f"Repeated path prefix: {target}")
-            if display and re.match(r"^(?:entities|concepts|sources)/", display.strip()):
+            if display and re.match(r"^(?:entities|concepts|sources|analyses)/", display.strip()):
                 add_issue(issues, "info", "polluted-display", page.rel_file, f"Folder prefix leaked into display: {display.strip()}")
 
-        if not incoming.get(page.rel_no_ext):
+        # Analysis pages are outputs filed back from queries; nothing has to
+        # link to them, so an inbound-link check would only add noise.
+        if page.page_type != "analysis" and not incoming.get(page.rel_no_ext):
             add_issue(issues, "info", "orphan", page.rel_file, "No incoming link from another managed content page")
+
+    for target, referrers in sorted(dead_targets.items()):
+        if len(referrers) > 1:
+            add_issue(issues, "info", "missing-page-candidate", target, f"Dead-link target referenced by {len(referrers)} pages; a real page may be warranted", referrers=sorted(referrers))
 
     for digest, paths in hashes.items():
         if len(paths) > 1:
@@ -1117,8 +1186,13 @@ def cmd_lint(args: argparse.Namespace) -> None:
     index_path = root / args.wiki_folder / "index.md"
     expected = {page.rel_no_ext for page in pages}
     if index_path.exists():
-        index_links = {resolve_content_target(match.group(1), exact_pages, fuzzy_pages, args.wiki_folder) for match in WIKILINK_RE.finditer(read_text(index_path))}
-        index_links.discard(None)
+        index_links: set[str] = set()
+        for match in WIKILINK_RE.finditer(read_text(index_path)):
+            resolved = resolve_content_target(match.group(1), exact_pages, fuzzy_pages, args.wiki_folder)
+            if resolved is None:
+                add_issue(issues, "info", "index-drift", index_path.relative_to(root).as_posix(), f"Index entry does not resolve: {match.group(1).strip()}")
+            else:
+                index_links.add(resolved)
         for missing in sorted(expected - index_links):
             add_issue(issues, "info", "index-drift", index_path.relative_to(root).as_posix(), f"Missing index entry: {missing}")
     elif expected:
@@ -1132,9 +1206,14 @@ def cmd_lint(args: argparse.Namespace) -> None:
     json_dump({"summary": {"pages": len(pages), **counts, "categories": dict(sorted(categories.items()))}, "graph": graph_stats(graph), "issues": issues})
 
 
+def shorten(text: str, limit: int = INDEX_SUMMARY_LIMIT) -> str:
+    text = normalize_ws(text)
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 def render_index(pages: list[Page], wiki_folder: str) -> str:
-    labels = (("实体", "entity"), ("概念", "concept"), ("来源", "source"))
-    lines = ["# Wiki Index", "", "> 由 llm-wiki 根据当前页面确定性生成。", "", "> 页面名后的 `aliases` 表示别名、缩写或常用译名。", ""]
+    labels = (("实体", "entity"), ("概念", "concept"), ("来源", "source"), ("分析", "analysis"))
+    lines = ["# Wiki Index", "", "> 由 llm-wiki 根据当前页面确定性生成。查询时先读本文件定位候选页面，再打开页面本身。", "", "> 页面名后的 `aliases` 表示别名、缩写或常用译名。", ""]
     for heading, page_type in labels:
         lines.extend([f"## {heading}", ""])
         selected = sorted((page for page in pages if page.page_type == page_type), key=lambda page: (normalize_text(page.title), page.rel_no_ext))
@@ -1143,7 +1222,7 @@ def render_index(pages: list[Page], wiki_folder: str) -> str:
             continue
         for page in selected:
             aliases = f" `aliases: {', '.join(page.aliases)}`" if page.aliases else ""
-            summary = f" — {page.summary}" if page.summary and page_type != "source" else ""
+            summary = f" — {shorten(page.summary)}" if page.summary else ""
             lines.append(f"- [[{page.rel_no_ext}|{page.title}]]{aliases}{summary}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
@@ -1159,6 +1238,25 @@ def cmd_index(args: argparse.Namespace) -> None:
     if args.write and changed:
         atomic_write(path, content)
     json_dump({"write": args.write, "path": path.relative_to(root).as_posix(), "changed": changed, "pageCount": len(pages), "unreadablePages": unreadable, "content": content if not args.write else None})
+
+
+def cmd_log(args: argparse.Namespace) -> None:
+    """Append one fixed-format entry to the wiki log."""
+    root = safe_root(args.vault)
+    title = normalize_ws(args.title)
+    if not title:
+        raise ValueError("log title must not be empty")
+    path = root / args.wiki_folder / "log.md"
+    heading = f"## [{date.today().isoformat()}] {args.operation} | {title}"
+    lines = [normalize_ws(line) for line in (args.line or []) if normalize_ws(line)]
+    existing = read_text(path) if path.exists() else ""
+    if not existing.strip():
+        existing = "# Wiki Log\n\n> 按时间追加的操作记录。条目标题格式：`## [YYYY-MM-DD] <operation> | <title>`。\n"
+    entry = heading + "\n"
+    if lines:
+        entry += "\n" + "\n".join(f"- {line}" for line in lines) + "\n"
+    atomic_write(path, existing.rstrip("\n") + "\n\n" + entry)
+    json_dump({"path": path.relative_to(root).as_posix(), "heading": heading, "lines": len(lines)})
 
 
 def common(subparser: argparse.ArgumentParser) -> None:
@@ -1207,6 +1305,13 @@ def build_parser() -> argparse.ArgumentParser:
     common(index)
     index.add_argument("--write", action="store_true")
     index.set_defaults(func=cmd_index)
+
+    log = subparsers.add_parser("log", help="Append one `## [date] <operation> | <title>` entry to the wiki log")
+    common(log)
+    log.add_argument("--operation", required=True, choices=LOG_OPERATIONS)
+    log.add_argument("--title", required=True)
+    log.add_argument("--line", action="append", help="One bullet of detail; repeatable")
+    log.set_defaults(func=cmd_log)
 
     return parser
 

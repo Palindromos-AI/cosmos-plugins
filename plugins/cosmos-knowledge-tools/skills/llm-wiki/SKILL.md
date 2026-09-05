@@ -1,27 +1,36 @@
 ---
 name: llm-wiki
-description: Build, query, lint, and maintain a structured, source-grounded Obsidian LLM Wiki without calling a plugin LLM API. Use when the user asks to ingest one or more vault notes or folders; extract entities, concepts, claims, quotes, aliases, relationships, or contradictions; create or merge wiki source/entity/concept pages; query the wiki with graph-assisted retrieval and citations; save useful conversations back into the wiki; rebuild the wiki index; or audit and repair dead links, orphans, duplicates, schema drift, aliases, tags, and ungrounded quotations.
+description: Build, query, lint, and maintain a structured, source-grounded LLM Wiki inside an Obsidian vault without calling a plugin LLM API. Use when the user asks to ingest one or more vault notes or folders; extract entities, concepts, claims, quotes, aliases, relationships, or contradictions; create or merge wiki source/entity/concept pages; query the wiki with graph-assisted retrieval and citations; file an answer, comparison, or synthesis back into the wiki as an analysis page; save useful conversations back into the wiki; rebuild the wiki index; or audit and repair dead links, orphans, duplicates, stale analyses, schema drift, aliases, tags, and ungrounded quotations.
 ---
 
 # LLM Wiki
 
 Use the current Codex model for every semantic decision. Use local code only for deterministic vault operations. Never call a third-party wiki plugin, its configured provider, or any API key stored under the vault's `.obsidian/plugins/` configuration.
 
+## Three layers
+
+The wiki is a persistent, compounding artifact between the user and their raw notes. Knowledge is compiled once when a source arrives and kept current afterwards, instead of being rediscovered from raw documents on every question. The user curates sources and asks questions; the model does the summarizing, cross-referencing, filing, and bookkeeping.
+
+- **Raw sources**: the user's own notes outside the wiki folder. Immutable — read them; never edit, move, rename, or reformat them. Non-Markdown originals under `raw/` are ingested through their Markdown sidecars.
+- **Wiki**: every page under the wiki folder. The model writes and maintains all of it; the user reads it in Obsidian, follows links, and asks questions. Ingesting one source normally touches many pages — the source page, its entity and concept pages, related pages, the index, and the log.
+- **Schema**: `wiki/schema/config.md`. User-editable policy that the user and the model refine together as they learn what works for the domain. Never rewrite it wholesale; propose a diff and confirm.
+
 ## Fixed defaults
 
 - Treat the current working directory as the vault root unless the user names another vault.
 - Use `wiki/` as the generated wiki folder and Chinese as the output language unless an existing `wiki/schema/config.md` says otherwise.
 - Preserve entity and concept names in the source language. Write summaries, labels, and explanations in the wiki language.
-- Treat `wiki/entities/`, `wiki/concepts/`, and `wiki/sources/` as managed content. Never ingest generated wiki pages as source notes.
+- Treat `wiki/entities/`, `wiki/concepts/`, `wiki/sources/`, and `wiki/analyses/` as managed content. Never ingest generated wiki pages as source notes.
 - Preserve human-authored content and any page with `reviewed: true`.
-- Inside managed wiki pages, this skill's full-path wikilink convention takes precedence over the bare `[[Note]]` linking style used elsewhere (including examples in `obsidian-markdown`).
+- Inside managed wiki pages, use this skill's full-path wikilink convention even where the rest of the vault uses bare `[[Note]]` links.
+- A version-1 schema predates analysis pages and the fixed log format. Treat both as active defaults, and propose the schema update to the user at the next write operation.
 
 ## Route the request
 
 Read only the references required for the requested operation:
 
 - Ingest notes, folders, or conversations: read [ingestion.md](references/ingestion.md) and [schema.md](references/schema.md) completely.
-- Query the wiki: read [query.md](references/query.md) completely.
+- Query the wiki, or file an answer back into it: read [query.md](references/query.md) completely; add [schema.md](references/schema.md) when a page will be written.
 - Lint, review, repair, deduplicate, or maintain: read [lint.md](references/lint.md) and [schema.md](references/schema.md) completely.
 - Initialize or rebuild the index: read [schema.md](references/schema.md) completely.
 
@@ -46,8 +55,9 @@ Available commands:
 - `retrieve --query TEXT [--keyword TEXT ...] [--top N]`: rank query context through lexical matching plus wikilink-graph PPR.
 - `lint`: produce a read-only JSON report of deterministic integrity issues.
 - `index [--write]`: preview or write `wiki/index.md`.
+- `log --operation OP --title TEXT [--line TEXT ...]`: append one `## [YYYY-MM-DD] <operation> | <title>` entry with optional bullets to `wiki/log.md`. Operations: `init`, `ingest`, `query`, `lint`, `repair`, `merge`, `index`, `other`.
 
-Run read-only commands before semantic work. Do not use `init --write` or `index --write` unless the user's request authorizes vault modification.
+Run read-only commands before semantic work. Do not use `init --write`, `index --write`, or `log` unless the user's request authorizes vault modification.
 
 ## Common preflight
 
@@ -62,39 +72,42 @@ Run read-only commands before semantic work. Do not use `init --write` or `index
 
 Follow every phase in order; do not collapse extraction and page writing into one improvisational pass.
 
-1. Read the complete source body and its frontmatter.
+1. Read the complete source body and its frontmatter. When the source embeds local images that carry information — figures, tables, charts — view them one at a time after reading the text and treat what they show as source content; name any image you could not read in the source page.
 2. Extract a structured analysis using the contract in `ingestion.md`. For long notes, process bounded semantic batches while carrying the extracted-name list forward. The first batch alone owns the source title, source summary, key points, related existing pages, and contradictions.
 3. Verify every quoted mention character-for-character against the original source. Drop or correct ungrounded quotes before writing.
 4. Resolve each item against existing titles and aliases, then perform semantic equivalence checking. Reuse an existing page for translations, abbreviations, spelling variants, or synonymous names. Do not merge merely related items.
-5. Create or update the source page first using the stable source slug returned by `preflight`.
-6. Create or merge entity and concept pages. Preserve `created`, set `updated` to today, append unique sources and aliases, retain grounded quotations with provenance, and protect reviewed content.
-7. Update only genuinely related existing pages. Add bidirectional links without rewriting unrelated sections.
-8. Record unresolved contradictions with both claims and source attribution. Never resolve a factual conflict by choosing a side without evidence.
-9. Run `lint`, correct issues caused by the current operation, then run `index --write`.
-10. Append a concise entry to `wiki/log.md` containing the operation, source, model surface (`Codex`), created/updated pages, failures, collisions, contradictions, and elapsed time.
+5. Review checkpoint: if the user asked to review before writing, stop here with the key takeaways, the planned write set, and open questions, and continue only after confirmation. Otherwise — and for every batch ingest — proceed without pausing and report at the end.
+6. Create or update the source page first using the stable source slug returned by `preflight`.
+7. Create or merge entity and concept pages. Preserve `created`, set `updated` to today, append unique sources and aliases, retain grounded quotations with provenance, and protect reviewed content.
+8. Update only genuinely related existing pages. Add bidirectional links without rewriting unrelated sections.
+9. Record unresolved contradictions with both claims and source attribution. Never resolve a factual conflict by choosing a side without evidence.
+10. Run `lint`, correct issues caused by the current operation, then run `index --write`.
+11. Append the log entry with `log --operation ingest --title "<source title>"`, one `--line` each for the source path, model surface (`Codex`), created pages, updated pages, failures, collisions, and contradictions.
 
 For multiple sources, reuse one inventory snapshot initially, update the in-memory title/alias registry after each source, and detect duplicates both within the batch and against existing source-page `contentHash` values.
 
 ## Query workflow
 
-1. Run `inventory` and derive 5–10 short search keywords when the literal query has weak title/alias matches.
+1. Read `wiki/index.md` first: it lists every page with a one-line summary and is the fastest way to see what the wiki covers. Derive 5–10 short search keywords when the literal query has weak title/alias matches.
 2. Run `retrieve` with the original query and those keywords.
 3. Read the returned pages in rank order, normally no more than 10. Follow relevant links only when required to answer the question.
-4. Answer from the loaded wiki evidence. Cite claims inline with full vault wikilinks and finish with a References section.
+4. Answer from the loaded wiki evidence in the form the question calls for — prose, a comparison table, a timeline, or another format the user asks for. Cite claims inline with full vault wikilinks and finish with a References section.
 5. If retrieval finds nothing, clearly distinguish “not present in this vault” from general model knowledge. Use general knowledge only if the user asks for it.
-6. Save a query conversation into the wiki only when the user explicitly asks, then use the conversation-ingest contract in `ingestion.md`.
+6. File an answer back only when the user asks. An answer, comparison, or synthesis built from wiki evidence becomes an analysis page under `wiki/analyses/` following `query.md`; a conversation that introduced knowledge the wiki does not yet hold uses the conversation-ingest contract in `ingestion.md`. Filing an analysis ends with `lint`, `index --write`, and `log --operation query`.
 
 ## Lint and repair workflow
 
 1. Run `lint` without writes.
-2. Add semantic review for near-duplicate pages, contradictions, weak aliases, and structurally valid but low-quality content.
-3. Present or implement fixes according to the user's request. Treat page deletion, duplicate merging, and broad rewrites as destructive; require explicit authorization.
-4. Re-run `lint` after fixes and rebuild the index when page paths, titles, aliases, or summaries changed.
-5. Never fabricate content to fill a stub. Use sources already in the vault or leave a clearly marked unresolved item.
+2. Add semantic review for near-duplicate pages, contradictions, claims superseded by newer sources, concepts mentioned repeatedly but lacking their own page, missing cross-references, weak aliases, and structurally valid but low-quality content.
+3. Close the report with suggested follow-ups: questions the wiki cannot answer yet and sources worth adding. These are suggestions for the user; never fetch or fabricate to fill them.
+4. Present or implement fixes according to the user's request. Treat page deletion, duplicate merging, and broad rewrites as destructive; require explicit authorization.
+5. Re-run `lint` after fixes and rebuild the index when page paths, titles, aliases, or summaries changed.
+6. Never fabricate content to fill a stub. Use sources already in the vault or leave a clearly marked unresolved item.
+7. Log the pass with `log --operation lint` (read-only review) or `log --operation repair` (fixes applied).
 
 ## Editing rules
 
-- Prefer Obsidian CLI for vault reads and writes when Obsidian is open. Fall back to normal workspace file tools when it is unavailable.
+- Read and write vault files with normal workspace file tools; Obsidian reflects the changes live. An installed Obsidian CLI skill is optional and never required.
 - Use atomic, narrowly scoped edits. Re-read an existing page immediately before merging to avoid overwriting concurrent changes.
 - Use only full-path links inside generated pages, for example `[[wiki/concepts/attention|Attention]]`.
 - Never create HTML links or Markdown external links for internal wiki references.
@@ -110,8 +123,9 @@ Do not report success until:
 3. Every internal link resolves or appears in the reported unresolved dead-link list.
 4. `lint` has no new high-severity issue caused by the operation.
 5. `wiki/index.md` reflects the final page set.
-6. The final response lists sources processed, pages created/updated, skipped files, unresolved issues, and validation performed.
-7. For folder or all-vault ingestion, a final `discover` run accounts for the complete requested scope and shows no unhandled new or changed note.
+6. `wiki/log.md` carries one fixed-format entry for the operation.
+7. The final response lists sources processed, pages created/updated, skipped files, unresolved issues, and validation performed.
+8. For folder or all-vault ingestion, a final `discover` run accounts for the complete requested scope and shows no unhandled new or changed note.
 
 ## Marketplace change reporting
 

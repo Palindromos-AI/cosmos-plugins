@@ -1,4 +1,0 @@
-interface:
-  display_name: "Defuddle"
-  short_description: "用 Defuddle CLI 提取网页正文为干净的 Markdown"
-  default_prompt: "使用 $defuddle 提取这个网页的正文内容为 Markdown。"

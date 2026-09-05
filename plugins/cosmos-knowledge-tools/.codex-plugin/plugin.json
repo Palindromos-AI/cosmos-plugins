@@ -1,7 +1,7 @@
 {
   "name": "cosmos-knowledge-tools",
-  "version": "0.1.7",
-  "description": "Knowledge management, Obsidian, web extraction, and source conversion workflows for Cosmos.",
+  "version": "0.2.0",
+  "description": "Source-grounded LLM wiki maintenance and auditable raw-source conversion for Cosmos.",
   "author": {
     "name": "Jason"
   },
@@ -10,8 +10,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Cosmos Knowledge Tools",
-    "shortDescription": "Manage Cosmos knowledge and Obsidian workflows.",
-    "longDescription": "Packages Cosmos workflows for web extraction, Obsidian editing, structured wiki maintenance, Canvas and Bases authoring, and auditable raw-source conversion. The defuddle web-extraction skill downloads its npm package on demand through npx and fetches the requested web pages over the network.",
+    "shortDescription": "Build a source-grounded LLM wiki and convert raw sources.",
+    "longDescription": "Packages two Cosmos workflows: llm-wiki, which builds, queries, lints, and maintains a structured, source-grounded wiki of Markdown pages inside an Obsidian vault without calling any LLM API of its own, and raw-to-markdown, which converts files under raw/ into auditable Markdown sidecars through a pinned engine. Both run local code only; neither contacts the network. Obsidian-specific authoring skills and web extraction are installed separately from the official kepano/obsidian-skills collection.",
     "developerName": "Jason",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],

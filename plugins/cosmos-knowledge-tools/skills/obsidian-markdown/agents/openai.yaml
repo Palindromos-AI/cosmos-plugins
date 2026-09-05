@@ -1,4 +1,0 @@
-interface:
-  display_name: "Obsidian Markdown"
-  short_description: "编写 Obsidian 风格 Markdown：wikilink、callout、属性、嵌入"
-  default_prompt: "使用 $obsidian-markdown 按 Obsidian 语法编辑这篇笔记。"

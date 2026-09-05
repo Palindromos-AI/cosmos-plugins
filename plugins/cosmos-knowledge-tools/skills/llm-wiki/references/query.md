@@ -7,11 +7,14 @@
 3. Wikilink graph and PPR
 4. Context loading
 5. Answer contract
-6. Query-to-wiki feedback
+6. Filing answers back into the wiki
+7. Saving conversations
 
 ## Retrieval inputs
 
-Build a page registry from entity, concept, and source pages containing:
+Start by reading `wiki/index.md`. It is the content catalog — every entity, concept, source, and analysis page with its aliases and a one-line summary — and at moderate scale it alone tells you where to look. Then let `wiki_ops.py retrieve` rank candidates; use `inventory` only when alias, hash, or link details are needed.
+
+The registry behind `retrieve` covers entity, concept, source, and analysis pages and contains:
 
 - vault-relative path without `.md`;
 - H1 title or filename fallback;
@@ -68,7 +71,7 @@ Merge lexical and PPR rankings by the maximum of normalized lexical rank and PPR
 
 ## Context loading
 
-Read ranked pages in order. For entity/concept pages, start with the main definition/description and expand to other sections only as the question requires. Preserve citations and provenance.
+Read ranked pages in order. For entity/concept pages, start with the main definition/description and expand to other sections only as the question requires. For an analysis page, read `结论` and `依据` first; it may already answer the question, but check its `updated` date against the pages it cites before relying on it. Preserve citations and provenance.
 
 Use this context budget discipline:
 
@@ -82,6 +85,7 @@ For a follow-up question, include the necessary prior conversation context but r
 ## Answer contract
 
 - Answer in the wiki language unless the user asks otherwise.
+- Choose the form the question calls for: prose for explanations, a table for comparisons, a dated list for timelines, or another format the user asks for. The evidence rules below apply to every form.
 - Base every vault-specific claim on loaded pages.
 - Add an inline full-path wikilink near each supported claim.
 - End with `## 参考资料` and list each cited page once with a short description.
@@ -90,9 +94,22 @@ For a follow-up question, include the necessary prior conversation context but r
 - If evidence is missing, say the wiki does not contain the answer and suggest which source should be ingested.
 - Do not blend general model knowledge into a wiki-grounded answer without a visible boundary. Use a labeled “一般知识补充” section only when the user requests general knowledge.
 
-## Query-to-wiki feedback
+## Filing answers back into the wiki
 
-Do not automatically save answers. When the user explicitly asks to preserve a useful conversation:
+A good answer is wiki content: a comparison the user asked for, an analysis, a connection between pages that no single page states. Left in the conversation it is lost; filed as a page it compounds like an ingested source. File only when the user asks — “把这个存进 wiki”, “保存这份比较” — never automatically.
+
+1. Decide the page type. An answer built from wiki evidence becomes an analysis page under `wiki/analyses/`. A conversation that introduced knowledge the wiki does not yet hold — new facts, external claims, decisions — is a source and follows *Saving conversations* below. One conversation may need both.
+2. Choose a short semantic title for the question answered and derive the slug with the filename rules in `schema.md`. Check `analyses/` for an existing page on the same question; if one exists, revise it instead of creating a second.
+3. Write the page with the analysis frontmatter and body template in `schema.md`: `question` states what the page answers; `sources` lists every wiki page read for the answer (entity, concept, source, or analysis pages — never raw notes); `tags` carries one of `comparison`, `analysis`, `overview`, `synthesis`, `timeline`, `other`; `结论` holds the answer in its final form; `分析` keeps the reasoning with inline links; `依据` lists each cited page and what it contributed.
+4. Keep every claim traceable to a cited page. Information the wiki lacks stays labeled as such inside the page — an analysis never smuggles general knowledge into the wiki as fact. Any “一般知识补充” from the answer stays out of the page unless the user explicitly wants it recorded, and then it keeps its label.
+5. Do not modify entity or concept pages to point at the analysis unless the user asks; analysis pages are outputs and need no inbound links.
+6. Run `lint`, fix issues the new page caused, run `index --write`, and append `log --operation query --title "<analysis title>"` with the page path and the cited pages.
+
+When a later ingest updates a page an analysis cites, lint reports the analysis as stale. Revise it from the current evidence on request; never let an old conclusion stand silently against newer pages.
+
+## Saving conversations
+
+When the user explicitly asks to preserve a conversation whose value is new knowledge rather than the answer itself:
 
 1. Evaluate whether it contains durable explanations, analyses, decisions, or facts.
 2. Compare its topics against the current wiki.
